@@ -8,6 +8,7 @@ Next.js App Router + Gemini API + Supabase + Netlifyで作った日本語の学�
 
 - 職業訓練校のAI活用・Excel VBAの質問と、会話を踏まえた追加質問
 - 「解説」と「ヒント」の切り替え、学習経験に合わせた回答
+- VBAの質問でMicrosoft Learnの公式資料を取得し、回答と履歴に出典リンクを表示
 - Markdown・VBAのコード・表・LaTeX数式の表示、回答のコピー
 - 質問履歴の検索、しおり保存、削除
 - Supabaseのクラス共通メール・パスワード認証と、クラスで共有する履歴
@@ -76,6 +77,14 @@ GEMINI_MODEL=gemini-3.8-flash
 
 環境変数を変更したら開発サーバーを再起動してください。ヘッダーの「AI接続中」を確認し、質問して、再読み込み後に履歴が残るか確認します。接続バッジは必要な設定の有無を示し、プロバイダーの稼働状態を保証するものではありません。
 
+## Excel VBAの参照資料
+
+[Microsoft LearnのExcel VBAリファレンス](https://learn.microsoft.com/ja-jp/office/vba/api/overview/excel)を公式資料として使用します。VBAの質問では、GeminiのURL contextツールに概要ページと、質問のキーワードに対応する関連ページを最大2件渡します。Option Explicit、Range / Value / Cells、Workbook / Worksheet、For...Next、If...Then...Else、MsgBoxを対象にしています。「それを詳しく」などの追加質問では、直前の生徒の質問も参照ページの選択に使います。
+
+回答末尾の「参照した公式資料」には、取得成功のメタデータを確認できた選択済みURLだけを表示します。出典は回答本文と一緒に保存され、履歴・コピーにも残ります。一部の取得失敗は回答に明示し、すべての取得に失敗した場合は回答を保存せず、再試行の案内を表示します。関連ページを登録していないテーマでは概要ページのみを参照するため、出典欄が回答中の全仕様を裏付けるとは限りません。
+
+サイト全体の取り込みやモデルの再学習は行いません。取得した資料を質問ごとの補足情報として利用します。URL contextはリンク先を再帰的に取得しないため、対応する資料は `src/lib/vba-reference.ts` に明示します。取得したページはGeminiの入力トークンに含まれます。モデルを変更する場合は、[URL context対応モデル](https://ai.google.dev/gemini-api/docs/generate-content/url-context)を選んでください。通常のAI活用の質問は従来どおりGeminiの知識と会話を使います。体験モードは固定サンプルで、資料の取得は行いません。
+
 ## Netlifyで公開
 
 1. このディレクトリを自分のGitリポジトリにpushします。
@@ -127,6 +136,7 @@ src/components/learning-app.tsx    学習チャット画面
 src/components/class-login.tsx     クラス共通ログイン画面
 scripts/create-class-account.mjs   共通アカウントの一度限りの発行
 src/lib/tutor.ts                   学習分野・学習経験・回答モードのシステム指示
+src/lib/vba-reference.ts           公式資料の選択・取得指示・取得済み出典の表示
 src/lib/demo.ts                    体験用サンプル
 supabase/migrations/               テーブル・RLS・保存関数・質問回数制限
 netlify.toml                       Netlifyビルド設定
@@ -134,6 +144,8 @@ netlify.toml                       Netlifyビルド設定
 
 ## 公式資料
 
+- [Microsoft Learn Excel VBAリファレンス](https://learn.microsoft.com/ja-jp/office/vba/api/overview/excel)
+- [Gemini URL context](https://ai.google.dev/gemini-api/docs/generate-content/url-context)
 - [Gemini SDKとAPI](https://ai.google.dev/gemini-api/docs/get-started)
 - [Geminiモデル一覧](https://ai.google.dev/gemini-api/docs/models)
 - [Supabaseメール・パスワードログイン](https://supabase.com/docs/reference/javascript/auth-signinwithpassword)

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: mocks.generateContent }; } }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser: mocks.getUser }, rpc: mocks.rpc, from: mocks.from }) }));
+import { EXCEL_VBA_REFERENCE_URL } from "../src/lib/vba-reference";
 import { POST } from "../src/app/api/chat/route";
 import { GET as account } from "../src/app/api/account/route";
 
@@ -25,7 +26,10 @@ describe("Chat API boundary", () => {
     vi.stubEnv("CLASS_ACCOUNT_USER_ID", id);
     mocks.getUser.mockResolvedValue({ data: { user: { id, is_anonymous: false } }, error: null });
     mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "consume_question_quota" ? true : id, error: null }));
-    mocks.generateContent.mockResolvedValue({ text: "書き込むセルをRangeで指定する方法を考えてみましょう。" });
+    mocks.generateContent.mockResolvedValue({ text: "書き込むセルをRangeで指定する方法を考えてみましょう。", candidates: [{ urlContextMetadata: { urlMetadata: [
+      { retrievedUrl: EXCEL_VBA_REFERENCE_URL, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+      { retrievedUrl: "https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+    ] } }] });
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
@@ -78,11 +82,34 @@ describe("Chat API boundary", () => {
   it("passes the learning level and hint mode, then persists only after successful generation", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ answer: "書き込むセルをRangeで指定する方法を考えてみましょう。", conversationId: id, saved: true });
+    const result = await response.json();
+    expect(result).toMatchObject({ conversationId: id, saved: true });
+    expect(result.answer).toContain("書き込むセルをRangeで指定する方法を考えてみましょう。");
+    expect(result.answer).toContain("### 参照した公式資料");
+    expect(result.answer).toContain("excel.range.value");
+    expect(mocks.generateContent.mock.calls[0][0].config.tools).toEqual([{ urlContext: {} }]);
+    expect(mocks.generateContent.mock.calls[0][0].contents.at(-1).parts[1].text).toContain(EXCEL_VBA_REFERENCE_URL);
+    expect(mocks.rpc.mock.calls[1][1].p_answer).toBe(result.answer);
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("はじめて");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("Excel VBA");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("ヒントモード");
     expect(mocks.rpc.mock.calls[1][0]).toBe("save_question_exchange");
+  });
+  it("does not retrieve VBA references for an AI prompt question", async () => {
+    const result = await POST(request({ subject: "AI活用", message: "業務メールのプロンプトを教えて" }));
+    expect(result.status).toBe(200);
+    expect(mocks.generateContent.mock.calls[0][0].config.tools).toBeUndefined();
+    expect((await result.json()).answer).not.toContain("参照した公式資料");
+  });
+  it("refuses to save an answer when no selected official source was retrieved", async () => {
+    mocks.generateContent.mockResolvedValue({ text: "公式資料を確認した回答です。", candidates: [{ urlContextMetadata: { urlMetadata: [
+      { retrievedUrl: EXCEL_VBA_REFERENCE_URL, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_ERROR" },
+      { retrievedUrl: "https://other.example/doc", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
+    ] } }] });
+    const result = await POST(request());
+    expect(result.status).toBe(502);
+    expect((await result.json()).error).toContain("公式資料を取得できませんでした");
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
   });
   it("preserves the generated answer while explicitly reporting failed persistence", async () => {
     mocks.rpc.mockImplementation((name: string) => Promise.resolve(name === "consume_question_quota" ? { data: true, error: null } : { data: null, error: new Error("storage failure") }));
