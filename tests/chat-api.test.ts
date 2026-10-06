@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: mocks.generateContent }; } }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser: mocks.getUser }, rpc: mocks.rpc, from: mocks.from }) }));
 import { POST } from "../src/app/api/chat/route";
+import { GET as account } from "../src/app/api/account/route";
 
 const id = "33333333-3333-4333-8333-333333333333";
 function request(overrides = {}, headers: Record<string, string> = {}) {
@@ -28,6 +29,20 @@ describe("Chat API boundary", () => {
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
+  it("allows the class account to authenticate before Gemini is configured", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "");
+    const result = await account(request());
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ displayName: "クラス共通" });
+    expect((await POST(request())).status).toBe(503);
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it("does not enable login until all class account settings are present", async () => {
+    vi.stubEnv("CLASS_ACCOUNT_USER_ID", "");
+    expect((await account(request())).status).toBe(503);
+    expect(mocks.getUser).not.toHaveBeenCalled();
+  });
   it("refuses missing or invalid sessions before calling the model", async () => {
     const missing = await POST(request({}, { Authorization: "" }));
     expect(missing.status).toBe(401);

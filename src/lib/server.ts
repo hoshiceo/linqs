@@ -31,11 +31,12 @@ export async function readJson(request: Request): Promise<unknown> {
 
 export function getConfig() {
   const values = [process.env.GEMINI_API_KEY, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, process.env.CLASS_ACCOUNT_USER_ID];
-  return { mode: values.every(Boolean) ? "live" : values.some(Boolean) ? "incomplete" : "demo" } as const;
+  const authReady = values.slice(1).every(Boolean);
+  return { mode: values.every(Boolean) ? "live" : values.some(Boolean) ? "incomplete" : "demo", authReady } as const;
 }
 
 export async function authenticate(request: Request) {
-  if (getConfig().mode !== "live") throw new ApiError(503, "AIとの接続準備中です。管理者に設定をご確認ください。");
+  if (!getConfig().authReady) throw new ApiError(503, "クラスアカウントとの接続準備中です。管理者に設定をご確認ください。");
   const authorization = request.headers.get("authorization") ?? "";
   if (!authorization.startsWith("Bearer ")) throw new ApiError(401, "学習セッションが必要です。");
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {

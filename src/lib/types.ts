@@ -14,4 +14,4 @@ export type Conversation = {
   messages: Message[];
   persisted?: boolean;
 };
-export type AppConfig = { mode: "demo" | "live" | "incomplete" };
+export type AppConfig = { mode: "demo" | "live" | "incomplete"; authReady: boolean };

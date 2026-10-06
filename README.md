@@ -26,7 +26,7 @@ npm run dev
 
 http://localhost:3000 を開きます。
 
-**すべての接続設定が空の場合は体験モード**です。用意したサンプルの回答を表示し、履歴はブラウザのlocalStorageに保存します。自由な質問や追加質問をAIが生成するモードではありません。接続設定が一部だけある場合は、設定エラーを表示して送信を止めます。接続済みのサービスに障害がある場合も、体験回答へ自動で切り替えません。
+**すべての接続設定が空の場合は体験モード**です。用意したサンプルの回答を表示し、履歴はブラウザのlocalStorageに保存します。自由な質問や追加質問をAIが生成するモードではありません。SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキーが未設定でもログインと履歴閲覧を利用できます。AI回答は「準備中」と表示して送信を止め、Geminiキーの設定後に有効になります。Supabaseの設定自体が途中の場合は、ログインも停止します。接続済みのサービスに障害がある場合も、体験回答へ自動で切り替えません。
 
 ## GeminiとSupabaseを接続
 
@@ -42,12 +42,14 @@ NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
 
+`supabase/config.toml` はクラス共通アカウント用に新規登録と匿名ログインを無効にします。必要な場合、対応するSupabase CLIで `supabase config diff --project-ref YOUR_PROJECT_REF` を確認し、`supabase config push --project-ref YOUR_PROJECT_REF` で反映できます。
+
 各APIがJWTを`getUser()`で検証し、`CLASS_ACCOUNT_USER_ID`に指定した非匿名ユーザーだけを許可します。RLSは`auth.uid()`に一致する履歴を許可するため、同じ共通アカウントでログインした端末では同じ履歴を共有できます。他のアカウントではクラスのAPIを使えません。質問と回答の保存は1回のトランザクションで実行します。
 
 
 ### クラス共通アカウントを作成
 
-Supabaseプロジェクト作成後に、次の手順で1つのアカウントを発行します。現在はログイン画面と作成処理が実装済みで、実際のアカウント発行はSupabase接続後に実施します。
+Supabaseプロジェクト作成後に、次の手順で1つのアカウントを発行します。新しい環境では、Supabaseプロジェクトに共通アカウントを作成し、ユーザーIDを設定してください。
 
 1. `.env.setup.example` を `.env.setup` にコピーします。この作業環境では希望のメールアドレスだけ設定した `.env.setup` を用意済みです。上書きせず、そのファイルを編集してください。
 2. Supabase URLと、プロジェクトの**secret key（legacy service_role keyも可）**を `.env.setup` に設定します。このファイルはGit対象外で、Next.jsの実行環境には読み込ませません。

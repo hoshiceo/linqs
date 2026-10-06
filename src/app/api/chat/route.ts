@@ -10,6 +10,7 @@ export async function POST(request: Request) {
   try {
     if (Number(request.headers.get("content-length")) > 16000) throw new ApiError(413, "質問は3,000文字以内で入力してください。");
     const { supabase } = await authenticate(request);
+    if (!process.env.GEMINI_API_KEY) throw new ApiError(503, "AIの回答機能は準備中です。管理者に設定をご確認ください。");
     const body = await readJson(request);
     const parsed = chatSchema.safeParse(body);
     if (!parsed.success) throw new ApiError(400, "質問は1〜3,000文字で入力してください。");

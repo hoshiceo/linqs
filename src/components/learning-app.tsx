@@ -75,7 +75,7 @@ export default function LearningApp() {
             const saved = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
             if (Array.isArray(saved)) setConversations(saved.filter(c => c && typeof c.id === "string" && typeof c.title === "string" && Array.isArray(c.messages) && c.messages.every((m: Message) => m && typeof m.content === "string" && ["user", "assistant"].includes(m.role))).map(c => ({ ...c, subject: subjects.includes(c.subject) ? c.subject : "すべて" })));
           } catch { setWarning("このブラウザでは履歴を読み込めませんでした。新しい質問は利用できます。"); }
-        } else if (settings.mode === "live") {
+        } else if (settings.authReady) {
           const { data, error } = await getSupabase().auth.getSession();
           if (error) throw new Error("ログイン状態を確認できませんでした。");
           if (!data.session || data.session.user.is_anonymous) return;
@@ -227,7 +227,7 @@ export default function LearningApp() {
   const hasChat = messages.length > 0 || busy;
 
   if (!loaded) return <main className="login-page"><div className="login-brand"><Logo /></div><p className="login-help">学習スペースを準備しています…</p></main>;
-  if (isDemo ? !demoEntered : !classSignedIn) return <ClassLogin ready={config?.mode === "live"} demo={isDemo} error={loginError} onLogin={login} onDemo={() => setDemoEntered(true)} />;
+  if (isDemo ? !demoEntered : !classSignedIn) return <ClassLogin ready={config?.authReady === true} demo={isDemo} error={loginError} onLogin={login} onDemo={() => setDemoEntered(true)} />;
 
   return <div className="app-shell">
     {mobileOpen && <button className="mobile-overlay" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)} />}
@@ -249,7 +249,7 @@ export default function LearningApp() {
     </aside>
 
     <main className="main-panel">
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div><div className="topbar-right"><span className="pace-label"><Sparkles size={14} />自分のペースで、少しずつ。</span><span className={`connection-badge ${config?.mode === "live" ? "live" : ""}`}>{!config ? "準備中" : isDemo ? "体験モード" : config.mode === "live" ? "AI接続中" : "接続準備中"}</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div><div className="topbar-right"><span className="pace-label"><Sparkles size={14} />自分のペースで、少しずつ。</span><span className={`connection-badge ${config?.mode === "live" ? "live" : ""}`}>{!config ? "準備中" : isDemo ? "体験モード" : config.mode === "live" ? "AI接続中" : "AI準備中"}</span></div></header>
 
       {view === "chat" ? <>
         {hasChat ? <div className="conversation-bar"><div><span className="mini-subject">{subject}</span><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${active.bookmarked ? "is-saved" : ""}`} onClick={() => bookmark(active)} aria-label={active.bookmarked ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={active.bookmarked ? "currentColor" : "none"} /></button>}</div> : null}
@@ -275,13 +275,14 @@ export default function LearningApp() {
           </div>}
         </div>
         <div className="composer-area">
+          {config?.authReady && config.mode === "incomplete" && <div className="alert warning" role="status">AIの回答機能は準備中です。ログインと履歴の閲覧は利用できます。</div>}
           {error && <div className="alert error" role="alert"><CircleHelp size={17} /><span>{error}</span><button aria-label="通知を閉じる" onClick={() => setError("")}><X size={16} /></button></div>}
           {warning && <div className="alert warning" role="status"><CircleHelp size={17} /><span>{warning}</span><button aria-label="通知を閉じる" onClick={() => setWarning("")}><X size={16} /></button></div>}
           <form className="composer" onSubmit={send}>
-            <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+            <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
             <div className="composer-toolbar"><div className="composer-controls"><label className="subject-select"><BookOpen size={15} /><select aria-label="質問の分野" value={subject} onChange={e => setSubject(e.target.value as Subject)} disabled={busy}>{subjects.map(s => <option key={s} value={s}>{s === "すべて" ? "学習分野を選ぶ" : s}</option>)}</select><ChevronDown size={13} /></label><span className="control-divider" /><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span><button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
-          <div className="composer-footnote"><span>{isDemo ? "体験モードの回答はサンプルです。履歴はこのブラウザに保存されます。" : "AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。"}</span><span className="powered"><Sparkles size={11} />{isDemo ? "Linqs demo" : "Powered by Gemini"}</span></div>
+          <div className="composer-footnote"><span>{isDemo ? "体験モードの回答はサンプルです。履歴はこのブラウザに保存されます。" : "AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。"}</span><span className="powered"><Sparkles size={11} />{isDemo ? "Linqs demo" : config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>
       </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "もう一度読みたい解説をまとめて確認できます。"}</p>{!isDemo && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や学習分野から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
         {error && <div className="alert error" role="alert">{error}</div>}
