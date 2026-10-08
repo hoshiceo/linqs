@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  generateContent: vi.fn(), rpc: vi.fn(), getUser: vi.fn(), from: vi.fn(),
+  generateContent: vi.fn(), embedContent: vi.fn(), rpc: vi.fn(), getUser: vi.fn(), from: vi.fn(),
 }));
-vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: mocks.generateContent }; } }));
+vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: mocks.generateContent, embedContent: mocks.embedContent }; } }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser: mocks.getUser }, rpc: mocks.rpc, from: mocks.from }) }));
 import { EXCEL_VBA_REFERENCE_URL } from "../src/lib/vba-reference";
 import { POST } from "../src/app/api/chat/route";
@@ -25,7 +25,8 @@ describe("Chat API boundary", () => {
     vi.stubEnv("GEMINI_MODEL", "test-model");
     vi.stubEnv("CLASS_ACCOUNT_USER_ID", id);
     mocks.getUser.mockResolvedValue({ data: { user: { id, is_anonymous: false } }, error: null });
-    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "consume_question_quota" ? true : id, error: null }));
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "consume_question_quota" ? true : name === "textbook_catalog" ? [] : id, error: null }));
+    mocks.embedContent.mockResolvedValue({ embeddings: [{ values: Array(768).fill(0.1) }] });
     mocks.generateContent.mockResolvedValue({ text: "書き込むセルをRangeで指定する方法を考えてみましょう。", candidates: [{ urlContextMetadata: { urlMetadata: [
       { retrievedUrl: EXCEL_VBA_REFERENCE_URL, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
       { retrievedUrl: "https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value", urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" },
@@ -89,11 +90,11 @@ describe("Chat API boundary", () => {
     expect(result.answer).toContain("excel.range.value");
     expect(mocks.generateContent.mock.calls[0][0].config.tools).toEqual([{ urlContext: {} }]);
     expect(mocks.generateContent.mock.calls[0][0].contents.at(-1).parts[1].text).toContain(EXCEL_VBA_REFERENCE_URL);
-    expect(mocks.rpc.mock.calls[1][1].p_answer).toBe(result.answer);
+    expect(mocks.rpc.mock.calls.find(call => call[0] === "save_question_exchange")?.[1].p_answer).toBe(result.answer);
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("はじめて");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("Excel VBA");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("ヒントモード");
-    expect(mocks.rpc.mock.calls[1][0]).toBe("save_question_exchange");
+    expect(mocks.rpc.mock.calls.at(-1)?.[0]).toBe("save_question_exchange");
   });
   it("does not retrieve VBA references for an AI prompt question", async () => {
     const result = await POST(request({ subject: "AI活用", message: "業務メールのプロンプトを教えて" }));
@@ -109,10 +110,35 @@ describe("Chat API boundary", () => {
     const result = await POST(request());
     expect(result.status).toBe(502);
     expect((await result.json()).error).toContain("公式資料を取得できませんでした");
-    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+  it("passes retrieved textbook excerpts to Gemini and persists their page citations", async () => {
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data:
+      name === "consume_question_quota" ? true : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] :
+      name === "match_textbook_chunks" ? [{ id, filename: "Excel＿VBA.pdf", page: 21, content: "変数はDim文で宣言する。", extraction_method: "text", source_format: "pdf", similarity: 0.8 }] : id, error: null }));
+    const result = await POST(request({ message: "VBAの変数を教えて" }));
+    expect(result.status).toBe(200);
+    const body = await result.json();
+    expect(mocks.embedContent).toHaveBeenCalledOnce();
+    expect(mocks.generateContent.mock.calls[0][0].contents.at(-1).parts.at(-1).text).toContain("変数はDim文で宣言する。");
+    expect(body.answer).toContain("### 参照した教科書");
+    expect(body.answer).toContain("PDF p.21");
+    expect(mocks.rpc.mock.calls.at(-1)?.[1].p_answer).toBe(body.answer);
+  });
+  it("does not call Gemini or save a fake textbook answer when textbook lookup fails", async () => {
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve(name === "consume_question_quota" ? { data: true, error: null } : { data: null, error: new Error("lookup failed") }));
+    expect((await POST(request())).status).toBe(503);
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.embedContent).not.toHaveBeenCalled();
+    expect(mocks.rpc.mock.calls.some(call => call[0] === "save_question_exchange")).toBe(false);
+  });
+  it("does not claim textbook access before any books have been imported", async () => {
+    expect((await POST(request({ message: "VBAの教科書の内容を説明して" }))).status).toBe(503);
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.embedContent).not.toHaveBeenCalled();
   });
   it("preserves the generated answer while explicitly reporting failed persistence", async () => {
-    mocks.rpc.mockImplementation((name: string) => Promise.resolve(name === "consume_question_quota" ? { data: true, error: null } : { data: null, error: new Error("storage failure") }));
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve(name === "consume_question_quota" ? { data: true, error: null } : name === "textbook_catalog" ? { data: [], error: null } : { data: null, error: new Error("storage failure") }));
     const response = await POST(request());
     const result = await response.json();
     expect(response.status).toBe(200);
@@ -125,7 +151,7 @@ describe("Chat API boundary", () => {
     const response = await POST(request());
     expect(response.status).toBe(502);
     expect(await response.text()).not.toContain("server-only-test-secret");
-    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
   it("refuses unknown conversation IDs before using quota or calling the model", async () => {
     mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) });

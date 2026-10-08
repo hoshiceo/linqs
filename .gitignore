@@ -10,3 +10,6 @@ test-results/
 playwright-report/
 .DS_Store
 supabase/.temp/
+
+# Local class textbooks stay in the private Supabase database, not Git.
+textbook/

@@ -8,6 +8,7 @@ Next.js App Router + Gemini API + Supabase + Netlifyで作った日本語の学�
 
 - 職業訓練校のAI活用・Excel VBAの質問と、会話を踏まえた追加質問
 - 「解説」と「ヒント」の切り替え、学習経験に合わせた回答
+- textbookフォルダのPDF・Word教科書を検索し、教材名・PDFページを示して回答
 - VBAの質問でMicrosoft Learnの公式資料を取得し、回答と履歴に出典リンクを表示
 - Markdown・VBAのコード・表・LaTeX数式の表示、回答のコピー
 - 質問履歴の検索、しおり保存、削除
@@ -34,7 +35,7 @@ http://localhost:3000 を開きます。
 ### 1. Supabase
 
 1. [Supabase](https://supabase.com/)でプロジェクトを作成します。
-2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql` の順に一度ずつ実行します。既に001を実行済みなら002だけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。
+2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。
 3. Authenticationで **Email（メール・パスワード）** を有効にし、Anonymous Sign-Insは無効にします。Allow new users to sign upも無効にして、管理者が作成した共通アカウントだけを使います。
 4. プロジェクトURLとpublishable keyを `.env.local` に設定します。legacy anon keyでも利用できます。**アプリの実行にはservice_role / secret keyを使いません。** 下の共通アカウント作成処理だけはローカルの管理者キーを使用します。
 
@@ -85,6 +86,23 @@ GEMINI_MODEL=gemini-3.8-flash
 
 サイト全体の取り込みやモデルの再学習は行いません。取得した資料を質問ごとの補足情報として利用します。URL contextはリンク先を再帰的に取得しないため、対応する資料は `src/lib/vba-reference.ts` に明示します。取得したページはGeminiの入力トークンに含まれます。モデルを変更する場合は、[URL context対応モデル](https://ai.google.dev/gemini-api/docs/generate-content/url-context)を選んでください。通常のAI活用の質問は従来どおりGeminiの知識と会話を使います。体験モードは固定サンプルで、資料の取得は行いません。
 
+## 授業の教科書を登録
+
+`textbook/` のPDF・DOCXを対象に、質問に関連する抜粋をSupabaseで意味検索し、Geminiへ渡します。モデルを再学習する方式ではなく、教材を回答時に参照するRAG方式です。教材ファイルや抽出本文をGitに登録したり、公開ディレクトリに置いたりしません。
+
+1. `supabase/migrations/003_textbook_search.sql` を既存のSupabaseに適用します。pgvector拡張とクラス専用の教材テーブル、検索・登録関数を作成します。
+2. macOSのSwift（PDFKit / Vision）とLibreOfficeを用意して `npm run textbooks:extract` を実行します。文字が少ないPDFページには日本語OCRを適用します。Wordは日本語フォントを設定して作業用PDFに変換します。`soffice` がPATHにない場合は `SOFFICE_BIN` に実行ファイルの絶対パスを指定します。
+3. 抽出結果はGit対象外の `.local/textbooks/` に保存します。各ページの本文・抽出方法と、原本のSHA-256を記録します。空白ページと25文字未満のページは検索から除外します。画像内だけの情報や細かなコード・数値は読み取れない場合があるため、原本で確認してください。
+4. **教材本文をGoogleのGemini APIとSupabaseへ送信することが許可されている場合に**、`npm run textbooks:import` を実行します。既存の `.env.local` とローカル管理者用 `.env.setup` を読みます。必要な変数は `GEMINI_API_KEY`、`CLASS_ACCOUNT_USER_ID`、`SUPABASE_SECRET_KEY`、Supabase URLです。管理者キーはNetlifyには設定しません。
+5. `gemini-embedding-001` の768次元ベクトルを作成し、1件最大1,700文字の抜粋と一緒にSupabaseへ登録します。ローカルにベクトルをキャッシュし、同じ原本は再送しません。抽出方法を変更した同じ原本を置き換える場合は `npm run textbooks:import -- --force` を使用します。文書ごとの入れ替えはトランザクションで行い、他の文書や質問履歴は変更しません。
+6. アプリで「VBAの教科書で変数の宣言を説明して」などと質問し、教材名とページが回答・履歴に残ることを確認します。
+
+回答時は登録済みの全分野の教材を検索します。教材名やVBAの指定があれば対象を絞り、PDFページの指定にも対応します。検索結果は最大6件・合計9,000文字で、Geminiの入力情報として渡します。クラス共通アカウントのJWT・RLSを使い、匿名ユーザーや別アカウントから教材を読むことはできません。生徒には教材の読み取り権限だけを付け、登録・置換にはローカル管理者キーが必要です。
+
+参照欄のPDFページはファイルの先頭からの番号です。Word教材はPDF変換版のページ番号として明記し、元のWord表示のページ番号と一致すると主張しません。教科書の検索が失敗した場合は再試行を案内し、該当箇所が見つからなければその旨を表示します。未登録の教科書について質問された場合は「登録がまだ完了していません」と表示します。教材の原文は命令ではなく資料として扱い、ヒントモードの方針も維持します。
+
+Netlifyの実行環境で教材の抽出処理は不要です。一度登録した教材をSupabaseから検索するので、既存の環境変数だけで利用できます。教材更新時は管理者のローカル環境から再抽出・再登録します。体験モードでは教科書検索を行いません。
+
 ## Netlifyで公開
 
 1. このディレクトリを自分のGitリポジトリにpushします。
@@ -108,7 +126,7 @@ Gemini/Supabase/Netlifyの実際のアカウント設定と公開には、利用
 - Geminiの回答が成功して保存が失敗した場合は、回答と未保存通知を表示します。その会話の追加送信を止め、保存された文脈と表示の食い違いを防ぎます。
 - モデルには直近20メッセージを渡します。履歴一覧は更新の新しい100会話を表示します。
 - 質問制限は共通アカウント単位で、**クラス全体で30回/時間**です。Netlifyの複数インスタンスでも共有されます。失敗したGeminiへのリクエストも回数に含みます。
-- 教員向け管理画面、学校教材の検索、添付画像、個別の生徒アカウントは含みません。
+- 教員向け管理画面、教材アップロード画面、添付画像、個別の生徒アカウントは含みません。
 
 ## 開発・確認
 
@@ -137,6 +155,9 @@ src/components/class-login.tsx     クラス共通ログイン画面
 scripts/create-class-account.mjs   共通アカウントの一度限りの発行
 src/lib/tutor.ts                   学習分野・学習経験・回答モードのシステム指示
 src/lib/vba-reference.ts           公式資料の選択・取得指示・取得済み出典の表示
+src/lib/textbooks.ts               教科書の意味検索・抜粋・教材ページの出典表示
+scripts/extract-textbooks.mjs      PDF・Wordの抽出と日本語OCR
+scripts/import-textbooks.mjs       教材ベクトルの生成・クラス専用DBへの登録
 src/lib/demo.ts                    体験用サンプル
 supabase/migrations/               テーブル・RLS・保存関数・質問回数制限
 netlify.toml                       Netlifyビルド設定
@@ -145,6 +166,8 @@ netlify.toml                       Netlifyビルド設定
 ## 公式資料
 
 - [Microsoft Learn Excel VBAリファレンス](https://learn.microsoft.com/ja-jp/office/vba/api/overview/excel)
+- [Gemini埋め込み](https://ai.google.dev/gemini-api/docs/embeddings)
+- [Supabaseベクトル検索](https://supabase.com/docs/guides/ai/semantic-search)
 - [Gemini URL context](https://ai.google.dev/gemini-api/docs/generate-content/url-context)
 - [Gemini SDKとAPI](https://ai.google.dev/gemini-api/docs/get-started)
 - [Geminiモデル一覧](https://ai.google.dev/gemini-api/docs/models)

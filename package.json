@@ -9,7 +9,9 @@
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "account:create": "node --env-file=.env.setup scripts/create-class-account.mjs"
+    "account:create": "node --env-file=.env.setup scripts/create-class-account.mjs",
+    "textbooks:extract": "node scripts/extract-textbooks.mjs",
+    "textbooks:import": "node --env-file=.env.local --env-file=.env.setup scripts/import-textbooks.mjs"
   },
   "dependencies": {
     "@google/genai": "2.26.0",
