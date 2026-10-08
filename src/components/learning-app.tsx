@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUpRight, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FileSpreadsheet, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Bookmark, Check, ChevronRight, CircleHelp, Copy, FileSpreadsheet, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -32,7 +32,6 @@ export default function LearningApp() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
-  const [subject, setSubject] = useState<Subject>("すべて");
   const [level, setLevel] = useState<LearningLevel>("はじめて");
   const [mode, setMode] = useState<AnswerMode>("explain");
   const [input, setInput] = useState("");
@@ -152,11 +151,11 @@ export default function LearningApp() {
 
   function openConversation(c: Conversation) {
     if (busy) return;
-    setActiveId(c.id); setSubject(c.subject); setView("chat"); setMobileOpen(false); setError(""); setWarning(""); setInput("");
+    setActiveId(c.id); setView("chat"); setMobileOpen(false); setError(""); setWarning(""); setInput("");
   }
 
-  function selectSuggestion(prompt: string, selected: Subject) {
-    setInput(prompt); setSubject(selected);
+  function selectSuggestion(prompt: string) {
+    setInput(prompt);
     inputRef.current?.focus({ preventScroll: true });
   }
 
@@ -176,14 +175,14 @@ export default function LearningApp() {
         answer = demoAnswer(question, mode);
       } else {
         const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
-          method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, subject, level, mode }),
+          method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, level, mode }),
         });
         answer = result.answer; id = result.conversationId || id; saved = result.saved;
         if (result.warning) setWarning(result.warning);
       }
       const now = new Date().toISOString();
       const exchange: Message[] = [{ id: crypto.randomUUID(), role: "user", content: question, created_at: now }, { id: crypto.randomUUID(), role: "assistant", content: answer, created_at: new Date(Date.now() + 1).toISOString() }];
-      const conversation: Conversation = { id, title: active?.title || question.slice(0, 50), subject, bookmarked: active?.bookmarked || false, created_at: active?.created_at || now, updated_at: now, messages: [...previousMessages, ...exchange], persisted: saved };
+      const conversation: Conversation = { id, title: active?.title || question.slice(0, 50), subject: "すべて", bookmarked: active?.bookmarked || false, created_at: active?.created_at || now, updated_at: now, messages: [...previousMessages, ...exchange], persisted: saved };
       setConversations(current => [conversation, ...current.filter(c => c.id !== previousId && c.id !== id)]);
       setActiveId(id);
       if (!saved) {
@@ -223,7 +222,7 @@ export default function LearningApp() {
     } catch { setError("コピーできませんでした。回答の文字を選択してコピーしてください。"); }
   }
 
-  const filtered = conversations.filter(c => (view !== "bookmarks" || c.bookmarked) && `${c.title} ${c.subject} ${c.messages.map(m => m.content).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  const filtered = conversations.filter(c => (view !== "bookmarks" || c.bookmarked) && `${c.title} ${c.messages.map(m => m.content).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
   const nav = (target: View) => { if (!busy) { setView(target); setQuery(""); setMobileOpen(false); } };
   const hasChat = messages.length > 0 || busy;
 
@@ -253,16 +252,15 @@ export default function LearningApp() {
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div><div className="topbar-right"><span className="pace-label"><Sparkles size={14} />自分のペースで、少しずつ。</span><span className={`connection-badge ${config?.mode === "live" ? "live" : ""}`}>{!config ? "準備中" : isDemo ? "体験モード" : config.mode === "live" ? "AI接続中" : "AI準備中"}</span></div></header>
 
       {view === "chat" ? <>
-        {hasChat ? <div className="conversation-bar"><div><span className="mini-subject">{subject}</span><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${active.bookmarked ? "is-saved" : ""}`} onClick={() => bookmark(active)} aria-label={active.bookmarked ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={active.bookmarked ? "currentColor" : "none"} /></button>}</div> : null}
+        {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${active.bookmarked ? "is-saved" : ""}`} onClick={() => bookmark(active)} aria-label={active.bookmarked ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={active.bookmarked ? "currentColor" : "none"} /></button>}</div> : null}
         <div className={`chat-scroll ${hasChat ? "has-messages" : ""}`} ref={messagesRef}>
           {!hasChat ? <div className="welcome">
             <div className="welcome-icon"><Sparkles size={30} strokeWidth={1.5} /></div>
             <div className="eyebrow">AI & VBA LEARNING</div>
             <h1>AIとVBAを、<br /><span>実務につなげる。</span></h1>
             <p className="welcome-description">授業の疑問から、業務に使うコードまで。<br className="mobile-only" />基礎から、ご自身のペースで。</p>
-            <div className="subject-tabs" aria-label="学習分野を選ぶ">{subjects.map(s => { const Icon = icons[s]; return <button key={s} className={subject === s ? "selected" : ""} aria-pressed={subject === s} onClick={() => setSubject(s)}><Icon size={16} />{s}</button>; })}</div>
             <div className="suggestions-label"><span>ここから質問を始めましょう</span><span>質問の例</span></div>
-            <div className="suggestion-grid">{suggestions[subject].map((s, index) => { const Icon = icons[s.subject]; return <button className={`suggestion-card card-${index}`} key={s.title} onClick={() => selectSuggestion(s.prompt, s.subject)}><span className={`subject-icon ${subjectClass(s.subject)}`}><Icon size={21} strokeWidth={1.7} /></span><span className="card-tag">{s.tag}</span><strong>{s.title}</strong><span className="card-bottom">この質問からはじめる<ArrowUpRight size={15} /></span></button>; })}</div>
+            <div className="suggestion-grid">{suggestions["すべて"].map((s, index) => { const Icon = icons[s.subject]; return <button className={`suggestion-card card-${index}`} key={s.title} onClick={() => selectSuggestion(s.prompt)}><span className={`subject-icon ${subjectClass(s.subject)}`}><Icon size={21} strokeWidth={1.7} /></span><span className="card-tag">{s.tag}</span><strong>{s.title}</strong><span className="card-bottom">この質問からはじめる<ArrowUpRight size={15} /></span></button>; })}</div>
             <button className="question-tip" onClick={() => setModal("guide")}><span className="tip-bulb"><Lightbulb size={20} /></span><span><strong>コードやエラー文も添えてください。</strong><small>やりたいこと・試したこと・実際の結果を伝えると、質問が具体的になります。</small></span><ChevronRight size={17} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
             {messages.map(message => <div className={`message message-${message.role}`} key={message.id}>
@@ -281,13 +279,13 @@ export default function LearningApp() {
           {warning && <div className="alert warning" role="status"><CircleHelp size={17} /><span>{warning}</span><button aria-label="通知を閉じる" onClick={() => setWarning("")}><X size={16} /></button></div>}
           <form className="composer" onSubmit={send}>
             <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-            <div className="composer-toolbar"><div className="composer-controls"><label className="subject-select"><BookOpen size={15} /><select aria-label="質問の分野" value={subject} onChange={e => setSubject(e.target.value as Subject)} disabled={busy}>{subjects.map(s => <option key={s} value={s}>{s === "すべて" ? "学習分野を選ぶ" : s}</option>)}</select><ChevronDown size={13} /></label><span className="control-divider" /><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span><button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
+            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span><button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
           <div className="composer-footnote"><span>{isDemo ? "体験モードの回答はサンプルです。履歴はこのブラウザに保存されます。" : "AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。"}</span><span className="powered"><Sparkles size={11} />{isDemo ? "Linqs demo" : config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>
-      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "もう一度読みたい解説をまとめて確認できます。"}</p>{!isDemo && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や学習分野から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "もう一度読みたい解説をまとめて確認できます。"}</p>{!isDemo && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
         {error && <div className="alert error" role="alert">{error}</div>}
-        {filtered.length > 0 ? <div className="history-list">{filtered.map(c => { const Icon = icons[c.subject]; return <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className={`subject-icon ${subjectClass(c.subject)}`}><Icon size={22} /></span><span><strong>{c.title}</strong><small>{c.subject} <span>·</span> {new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${c.bookmarked ? "is-saved" : ""}`} aria-label={c.bookmarked ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)}><Bookmark size={18} fill={c.bookmarked ? "currentColor" : "none"} /></button><button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button></div>; })}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
+        {filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${c.bookmarked ? "is-saved" : ""}`} aria-label={c.bookmarked ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)}><Bookmark size={18} fill={c.bookmarked ? "currentColor" : "none"} /></button><button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button></div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
       </div>}
     </main>
 

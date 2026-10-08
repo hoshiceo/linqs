@@ -7,6 +7,7 @@ Next.js App Router + Gemini API + Supabase + Netlifyで作った日本語の学�
 ## できること
 
 - 職業訓練校のAI活用・Excel VBAの質問と、会話を踏まえた追加質問
+- 学習分野の選択は不要。質問内容から関連する教材・公式資料を検索
 - 「解説」と「ヒント」の切り替え、学習経験に合わせた回答
 - textbookフォルダのPDF・Word教科書を検索し、教材名・PDFページを示して回答
 - VBAの質問でMicrosoft Learnの公式資料を取得し、回答と履歴に出典リンクを表示
@@ -153,7 +154,7 @@ src/app/api/conversations/route.ts  履歴の取得・保存・削除
 src/components/learning-app.tsx    学習チャット画面
 src/components/class-login.tsx     クラス共通ログイン画面
 scripts/create-class-account.mjs   共通アカウントの一度限りの発行
-src/lib/tutor.ts                   学習分野・学習経験・回答モードのシステム指示
+src/lib/tutor.ts                   質問内容・学習経験・回答モードのシステム指示
 src/lib/vba-reference.ts           公式資料の選択・取得指示・取得済み出典の表示
 src/lib/textbooks.ts               教科書の意味検索・抜粋・教材ページの出典表示
 scripts/extract-textbooks.mjs      PDF・Wordの抽出と日本語OCR

@@ -64,11 +64,7 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .welcome h1 { font-size: 37px; line-height: 1.55; font-weight: 600; letter-spacing: -.03em; margin: 11px 0 14px; color: #2d4239; }
 .welcome h1 span { color: var(--green); }
 .welcome-description { font-size: 13px; color: #849189; line-height: 1.9; margin: 0; }
-.subject-tabs { display: flex; align-items: center; gap: 8px; margin: 30px 0 26px; flex-wrap: wrap; }
-.subject-tabs button { display: inline-flex; align-items: center; gap: 7px; background: white; color: #7a877f; border: 1px solid #e7ebe7; border-radius: 7px; padding: 8px 15px; font-size: 12px; }
-.subject-tabs button:hover { border-color: #a3c8b4; background: #f5faf7; }
-.subject-tabs button.selected { background: var(--green); border-color: var(--green); color: white; }
-.suggestions-label { display: flex; align-items: center; justify-content: space-between; color: #5b7165; font-size: 12px; font-weight: 500; margin: 0 0 13px; }
+.suggestions-label { display: flex; align-items: center; justify-content: space-between; color: #5b7165; font-size: 12px; font-weight: 500; margin: 28px 0 13px; }
 .suggestions-label span:last-child { font-size: 10px; color: #9ca89f; font-weight: 400; }
 .suggestion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .suggestion-card { border: 1px solid #e4ebe5; background: #fff; border-radius: 12px; padding: 20px 17px 16px; text-align: left; position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
@@ -94,9 +90,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .composer textarea::placeholder { color: #a0aca2; }
 .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
 .composer-controls { display: flex; align-items: center; gap: 13px; }
-.subject-select { display: flex; align-items: center; gap: 6px; color: #8a968c; font-size: 11px; padding: 5px; }
-.subject-select select { appearance: none; width: auto; max-width: 90px; border: 0; background: transparent; color: #7c8c7e; font-size: 11px; padding: 2px 0; cursor: pointer; }
-.control-divider { height: 16px; border-left: 1px solid #e6ece6; }
 .answer-modes { display: flex; gap: 5px; }
 .answer-modes button { display: flex; align-items: center; gap: 5px; border: 0; border-radius: 5px; padding: 6px 9px; color: #97a294; background: transparent; font-size: 11px; }
 .answer-modes button.selected { background: #f0f6ef; color: #6a8c70; }
@@ -113,7 +106,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .conversation-bar { padding: 17px 0; width: min(800px, calc(100% - 84px)); margin: 0 auto; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 20px; justify-content: space-between; }
 .conversation-bar > div { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .conversation-bar h1 { font-size: 14px; font-weight: 500; margin: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.mini-subject { font-size: 11px; padding: 4px 8px; color: var(--green); background: #edf6ef; border-radius: 5px; flex-shrink: 0; }
 .messages { width: min(800px, calc(100% - 84px)); margin: 0 auto; padding: 22px 0 30px; }
 .message { margin: 0 0 28px; }
 .message-user { display: flex; justify-content: flex-end; }
@@ -226,7 +218,7 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 @media (max-width: 480px) { .login-page { padding: 24px 16px; } .login-card { padding: 25px 22px; } .login-card h1 { font-size: 23px; } }
 
 /* Comfortable reading sizes and contrast for Japanese text. */
-.brand-caption, .section-label, .recent-empty, .recent-item, .learning-note p, .help-link, .profile strong, .breadcrumb, .pace-label, .subject-tabs button, .suggestions-label, .question-tip strong, .subject-select, .subject-select select, .answer-modes button, .primary-button, .secondary-button, .danger-button, .settings-label, .settings-label select, .guide-step h3, .settings-modes strong { font-size: 14px; }
+.brand-caption, .section-label, .recent-empty, .recent-item, .learning-note p, .help-link, .profile strong, .breadcrumb, .pace-label, .suggestions-label, .question-tip strong, .answer-modes button, .primary-button, .secondary-button, .danger-button, .settings-label, .settings-label select, .guide-step h3, .settings-modes strong { font-size: 14px; }
 .welcome-description, .composer textarea, .markdown, .message-user p, .library-heading p, .history-search input, .app-dialog > p { font-size: 16px; }
 .suggestion-card strong { font-size: 15px; }
 .brand-caption { font-size: 12px; }
@@ -238,12 +230,10 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .composer textarea::placeholder { color: #809285; }
 .welcome { padding-top: 40px; }
 .suggestion-card { min-height: 176px; }
-.subject-tabs button { padding: 8px 13px; }
-.subject-select select { max-width: 100px; }
 
-@media (min-width: 1500px) { .welcome { padding-top: 62px; } .welcome h1 { font-size: 43px; } .subject-tabs { margin-top: 35px; } }
-@media (max-height: 850px) and (min-width: 761px) { .welcome { padding-top: 27px; } .welcome-icon { width: 48px; height: 48px; border-radius: 15px; margin-bottom: 15px; } .welcome h1 { font-size: 33px; margin-bottom: 10px; } .subject-tabs { margin-top: 22px; margin-bottom: 21px; } .suggestion-card { min-height: 161px; padding-top: 16px; } .card-tag { top: 26px; } .question-tip { padding: 13px 16px; } }
-@media (max-width: 1150px) { .sidebar { width: 230px; flex-basis: 230px; padding-left: 17px; padding-right: 17px; } .profile { width: calc(100% + 34px); margin-left: -17px; margin-right: -17px; padding-left: 20px; padding-right: 20px; } .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 60px); } .topbar { padding: 0 30px; } .pace-label { display: none; } .suggestion-grid { gap: 10px; } .suggestion-card { padding-left: 13px; padding-right: 13px; } .card-tag { left: 58px; } .suggestion-card strong { font-size: 14px; } .card-bottom { font-size: 11px; } .subject-tabs { gap: 6px; } .subject-tabs button { padding: 8px 10px; } .library-view { padding-left: 30px; padding-right: 30px; } }
+@media (min-width: 1500px) { .welcome { padding-top: 62px; } .welcome h1 { font-size: 43px; } }
+@media (max-height: 850px) and (min-width: 761px) { .welcome { padding-top: 27px; } .welcome-icon { width: 48px; height: 48px; border-radius: 15px; margin-bottom: 15px; } .welcome h1 { font-size: 33px; margin-bottom: 10px; } .suggestion-card { min-height: 161px; padding-top: 16px; } .card-tag { top: 26px; } .question-tip { padding: 13px 16px; } }
+@media (max-width: 1150px) { .sidebar { width: 230px; flex-basis: 230px; padding-left: 17px; padding-right: 17px; } .profile { width: calc(100% + 34px); margin-left: -17px; margin-right: -17px; padding-left: 20px; padding-right: 20px; } .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 60px); } .topbar { padding: 0 30px; } .pace-label { display: none; } .suggestion-grid { gap: 10px; } .suggestion-card { padding-left: 13px; padding-right: 13px; } .card-tag { left: 58px; } .suggestion-card strong { font-size: 14px; } .card-bottom { font-size: 11px; } .library-view { padding-left: 30px; padding-right: 30px; } }
 @media (max-width: 760px) {
   .app-shell { min-height: 0; }
   .sidebar { position: fixed; top: 0; bottom: 0; left: 0; width: 260px; z-index: 30; visibility: hidden; transform: translateX(-100%); transition: transform .2s, visibility .2s; padding-left: 22px; padding-right: 22px; }
@@ -262,9 +252,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .welcome-icon svg { width: 26px; }
   .welcome h1 { font-size: 30px; line-height: 1.5; margin-top: 10px; margin-bottom: 10px; }
   .welcome-description { font-size: 14px; }
-  .subject-tabs { gap: 7px; margin: 23px 0; }
-  .subject-tabs button { font-size: 12px; padding: 7px 10px; }
-  .subject-tabs button svg { width: 14px; }
   .suggestions-label { font-size: 13px; }
   .suggestions-label span:last-child { display: none; }
   .suggestion-grid { display: flex; flex-direction: column; gap: 9px; }
@@ -281,8 +268,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .composer { padding: 14px 12px 10px; border-radius: 13px; }
   .composer textarea { font-size: 14px; height: 48px; min-height: 48px; }
   .composer-controls { gap: 7px; }
-  .subject-select { gap: 4px; font-size: 11px; padding-left: 3px; }
-  .subject-select select { font-size: 11px; max-width: 80px; }
   .answer-modes { gap: 2px; }
   .answer-modes button { font-size: 11px; padding: 6px 7px; gap: 4px; }
   .answer-modes svg { width: 12px; }
@@ -291,7 +276,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .composer-footnote { font-size: 10px; margin-top: 9px; }
   .conversation-bar { padding: 12px 0; }
   .conversation-bar h1 { font-size: 12px; }
-  .mini-subject { font-size: 10px; }
   .messages { padding-top: 20px; }
   .message-user .message-content { max-width: 93%; padding: 11px 14px; }
   .message-user p, .markdown { font-size: 14px; }
@@ -317,8 +301,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 @media (max-width: 370px) {
   .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 32px); }
   .composer-controls { gap: 4px; }
-  .control-divider, .subject-select > svg:first-child { display: none; }
-  .subject-select select { max-width: 73px; }
   .answer-modes button { padding: 6px; }
   .composer textarea { font-size: 13px; }
 }

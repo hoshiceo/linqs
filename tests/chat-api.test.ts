@@ -96,8 +96,17 @@ describe("Chat API boundary", () => {
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("ヒントモード");
     expect(mocks.rpc.mock.calls.at(-1)?.[0]).toBe("save_question_exchange");
   });
+  it("answers without a subject selection and finds VBA sources from the question", async () => {
+    const response = await POST(request({ subject: undefined }));
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.answer).toContain("excel.range.value");
+    expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("質問に応じて判断");
+    expect(mocks.generateContent.mock.calls[0][0].config.tools).toEqual([{ urlContext: {} }]);
+    expect(mocks.rpc.mock.calls.find(call => call[0] === "save_question_exchange")?.[1].p_subject).toBe("すべて");
+  });
   it("does not retrieve VBA references for an AI prompt question", async () => {
-    const result = await POST(request({ subject: "AI活用", message: "業務メールのプロンプトを教えて" }));
+    const result = await POST(request({ subject: undefined, message: "業務メールのプロンプトを教えて" }));
     expect(result.status).toBe(200);
     expect(mocks.generateContent.mock.calls[0][0].config.tools).toBeUndefined();
     expect((await result.json()).answer).not.toContain("参照した公式資料");
