@@ -140,7 +140,7 @@ git merge origin/main
 git push origin dev
 ```
 
-NetlifyのProduction branchは`main`、Branch deploysは**None**、Deploy Previewsは**無効**にします。`dev`へのpushとPR作成ではNetlifyにデプロイせず、GitHub Actionsのチェックだけを実行します。本番反映は、ローカルでの確認とCI成功後に`dev`から`main`へのPRをマージして行います。
+NetlifyのProduction branchは`main`、Branch deploysは**None**、Deploy Previewsは**無効**にします。APIで設定する場合は`allowed_branches: ["main"]`、`skip_prs: true`とします。`allowed_branches: []`は全ブランチの許可になるため使いません。`dev`へのpushとPR作成ではNetlifyにデプロイせず、GitHub Actionsのチェックだけを実行します。本番反映は、ローカルでの確認とCI成功後に`dev`から`main`へのPRをマージして行います。
 
 Netlifyの環境変数の5項目はproductionコンテキストに設定します。ローカル開発用のSupabase・Gemini設定は`.env.development.local`に登録し、本番キーをコピーしません。開発環境で本番の履歴を変更しない構成にします。
 
