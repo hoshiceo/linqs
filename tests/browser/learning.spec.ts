@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockClassApi } from "./class-api";
+import { retrieveVbaReferences } from "../../src/lib/vba-search";
+import { appendVbaReferences } from "../../src/lib/vba-reference";
 
 async function navigate(page: Page, label: string) {
   const menu = page.getByRole("button", { name: "メニューを開く" });
@@ -116,4 +118,70 @@ test("an incorrect class password does not open the learning space", async ({ pa
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "ログインできませんでした" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveCount(0);
+});
+
+test("saved official reference excerpts retain their citations in answers and reopened history", async ({ page }) => {
+  // Search the shipped corpus; only authentication and the generated answer are fixtures.
+  const references = await retrieveVbaReferences("すべて", "Excel VBAでセルA1に文字を入力する方法を教えて");
+  expect(references.status).toBe("matched");
+  await mockClassApi(page, { answerSuffix: appendVbaReferences("", references) });
+  await page.goto("/");
+  await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+  await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await page.getByRole("button", { name: /セルA1に文字/ }).click();
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("参照した公式資料");
+  await expect(page.locator(".markdown")).toContainText("2026-10-09");
+  const source = page.locator('.markdown a[href="https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value"]').first();
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute("target", "_blank");
+  await navigate(page, "質問の履歴");
+  await page.locator(".history-open").click();
+  await expect(source).toBeVisible();
+  await page.locator(".markdown p").last().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/vba-reference-${test.info().project.name}.png`, fullPage: true });
+});
+
+test("untrusted answer images and HTML cannot issue external requests or execute scripts", async ({ page }) => {
+  const imageRequests: string[] = [];
+  await page.route("https://audit.invalid/**", route => {
+    imageRequests.push(route.request().url());
+    return route.abort();
+  });
+  await mockClassApi(page, { answerSuffix: '\n\n![図の説明](https://audit.invalid/pixel?question=SYNTHETIC_ONLY)\n\n<img src="https://audit.invalid/raw" onerror="window.__auditXss=true">\n\n<script>window.__auditXss=true</script>\n\n[unsafe](javascript:alert(1))' });
+  await page.goto("/");
+  await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+  await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("SYNTHETIC_ONLY");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("図の説明");
+  await expect(page.locator(".markdown img, .markdown script, .markdown a[href^='javascript:']")).toHaveCount(0);
+  expect(await page.evaluate(() => Boolean((window as Window & { __auditXss?: boolean }).__auditXss))).toBe(false);
+  const headers = (await page.request.get("/")).headers();
+  expect(headers["content-security-policy"]).toContain("img-src 'self'");
+  // Verify CSP also blocks an external image created independently of Markdown.
+  const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
+    const image = new Image();
+    image.onerror = () => resolve(true);
+    image.onload = () => resolve(false);
+    image.src = "https://audit.invalid/csp";
+  }));
+  expect(blocked).toBe(true);
+  expect(imageRequests).toEqual([]);
+});
+
+test("patched transitive KaTeX still renders inline and display math without trusted links", async ({ page }) => {
+  await mockClassApi(page, { answerSuffix: '\n\n数式: $\\frac{1}{2}$ と $\\sqrt{4}$\n\n$$\nx^2 + y^2 = z^2\n$$\n\n$\\href{https://audit.invalid/math}{unsafe}$' });
+  await page.goto("/");
+  await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+  await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("数式を説明して");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown .katex")).toHaveCount(4);
+  await expect(page.locator(".markdown .katex-display")).toHaveCount(1);
+  await expect(page.locator(".markdown .mfrac")).toBeVisible();
+  await expect(page.locator(".markdown .katex a, .markdown .katex img")).toHaveCount(0);
 });

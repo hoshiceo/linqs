@@ -10,7 +10,7 @@ Next.js App Router + Gemini API + Supabase + Netlifyで作った日本語の学�
 - 学習分野の選択は不要。質問内容から関連する教材・公式資料を検索
 - 「解説」と「ヒント」の切り替え、学習経験に合わせた回答
 - textbookフォルダのPDF・Word教科書を検索し、教材名・PDFページを示して回答
-- VBAの質問でMicrosoft Learnの公式資料を取得し、回答と履歴に出典リンクを表示
+- VBAの質問で保存済みMicrosoft公式資料から抜粋を検索し、回答と履歴に出典リンクを表示
 - Markdown・VBAのコード・表・LaTeX数式の表示、回答のコピー
 - 質問履歴の検索、しおり保存、削除
 - Supabaseのクラス共通メール・パスワード認証と、クラスで共有する履歴
@@ -37,9 +37,9 @@ SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキ�
 ### 1. Supabase
 
 1. [Supabase](https://supabase.com/)でプロジェクトを作成します。
-2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。
+2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql`、`004_server_exchange_writer.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。004は既存の履歴を残し、ログイン情報だけで回答を書き込める旧関数を非公開にします。
 3. Authenticationで **Email（メール・パスワード）** を有効にし、Anonymous Sign-Insは無効にします。Allow new users to sign upも無効にして、管理者が作成した共通アカウントだけを使います。
-4. プロジェクトURLとpublishable keyを `.env.local` に設定します。legacy anon keyでも利用できます。**アプリの実行にはservice_role / secret keyを使いません。** 下の共通アカウント作成処理だけはローカルの管理者キーを使用します。
+4. プロジェクトURLとpublishable keyを `.env.local` に設定します。legacy anon keyでも利用できます。**アプリの実行にはservice_role / secret keyを使いません。** 共通アカウント作成・保存専用鍵の初回登録・教材登録にだけ、ローカルの管理者キーを使用します。
 
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -48,7 +48,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 
 `supabase/config.toml` はクラス共通アカウント用に新規登録と匿名ログインを無効にします。必要な場合、対応するSupabase CLIで `supabase config diff --project-ref YOUR_PROJECT_REF` を確認し、`supabase config push --project-ref YOUR_PROJECT_REF` で反映できます。
 
-各APIがJWTを`getUser()`で検証し、`CLASS_ACCOUNT_USER_ID`に指定した非匿名ユーザーだけを許可します。RLSは`auth.uid()`に一致する履歴を許可するため、同じ共通アカウントでログインした端末では同じ履歴を共有できます。他のアカウントではクラスのAPIを使えません。質問と回答の保存は1回のトランザクションで実行します。
+各APIがJWTを`getUser()`で検証し、`CLASS_ACCOUNT_USER_ID`に指定した非匿名ユーザーだけを許可します。RLSは`auth.uid()`に一致する履歴を許可するため、同じ共通アカウントでログインした端末では同じ履歴を共有できます。他のアカウントではクラスのAPIを使えません。回答の保存にはサーバー専用鍵と、DBで発行した未使用・5分以内の保存許可が必要です。質問と回答の保存は1回のトランザクションで実行します。
 
 
 ### クラス共通アカウントを作成
@@ -67,6 +67,28 @@ Supabaseプロジェクト作成後に、次の手順で1つのアカウント�
 
 DashboardのAuthentication → Users → Add userから手動作成することもできます。その場合も、ユーザーIDをアプリの環境変数に設定してください。
 
+### 回答保存専用のサーバー鍵を登録
+
+004の適用後、環境ごとに256ビットのランダム鍵を登録します。この鍵は回答の保存許可・保存だけに使い、DBにはSHA-256を保存します。ブラウザへ渡したり、`NEXT_PUBLIC_`に付けたりしません。未設定・形式不正・DB未登録の場合、AIを呼ぶ前に質問処理を停止します。
+
+開発環境では、開発専用のSupabaseを使用してください。`.env.setup.development`に開発専用の`SUPABASE_URL`と`SUPABASE_SECRET_KEY`、`.env.development.local`に開発の公開接続設定と`CLASS_ACCOUNT_USER_ID`を設定してから実行します。本番キーをコピーしません。
+
+```sh
+node --env-file=.env.development.local --env-file=.env.setup.development scripts/configure-exchange-writer.mjs development
+```
+
+生成された`.local/exchange-writer.development.json`の`key`を、同じ開発環境の`.env.development.local`の`SUPABASE_EXCHANGE_WRITE_KEY`に設定します。ファイルはGit対象外・所有者のみ読み書き可能で、鍵はターミナルへ表示しません。開発用設定がない場合は実行せず、ログインとAIを無効のままにします。
+
+本番では、リリース承認後に本番用マイグレーションを適用し、本番の設定を使う管理者端末から次を実行します。
+
+```sh
+node --env-file=.env.local --env-file=.env.setup scripts/configure-exchange-writer.mjs production
+```
+
+`.local/exchange-writer.production.json`の`key`をNetlifyのproduction環境の`SUPABASE_EXCHANGE_WRITE_KEY`へ設定し、新しいコードをリリースします。管理者キーはNetlifyに登録しません。004を適用すると旧コードの質問処理は停止するため、メンテナンス中にDB・専用鍵・アプリを一緒に更新してください。既存の履歴は削除されません。旧コードのみへ戻しても質問処理は復旧しません。
+
+登録が不明な通信失敗では、同じコマンドを再実行すると保存済みの鍵で登録を再試行します。登録済みの場合は再登録しません。鍵を更新する場合は新しい鍵を管理者の`configure_exchange_writer`で登録してサーバー設定も変更し、古い鍵を無効にします。
+
 ### 2. Gemini
 
 [Google AI Studio](https://aistudio.google.com/apikey)でAPIキーを用意します。
@@ -82,11 +104,13 @@ GEMINI_MODEL=gemini-3.8-flash
 
 ## Excel VBAの参照資料
 
-[Microsoft LearnのExcel VBAリファレンス](https://learn.microsoft.com/ja-jp/office/vba/api/overview/excel)を公式資料として使用します。VBAの質問では、GeminiのURL contextツールに概要ページと、質問のキーワードに対応する関連ページを最大2件渡します。Option Explicit、Range / Value / Cells、Workbook / Worksheet、For...Next、If...Then...Else、MsgBoxを対象にしています。「それを詳しく」などの追加質問では、直前の生徒の質問も参照ページの選択に使います。
+[Microsoft LearnのExcel VBAリファレンス](https://learn.microsoft.com/ja-jp/office/vba/api/overview/excel)と[Microsoftの公式VBA原本](https://github.com/MicrosoftDocs/VBA-Docs)から取得した資料を、`data/vba-reference/index.json.gz`に同梱しています。2026年10月9日に取得した7,616記事（うち日本語10記事）の検索用データです。日本語の授業用語をVBAの識別子に対応づけ、記事名と識別子で候補を選び、本文の関連箇所を検索します。日本語・英語が同じ記事の場合は日本語を優先します。「それを詳しく」などの追加質問では、以前の具体的な生徒の質問も検索に使います。
 
-回答末尾の「参照した公式資料」には、取得成功のメタデータを確認できた選択済みURLだけを表示します。出典は回答本文と一緒に保存され、履歴・コピーにも残ります。一部の取得失敗は回答に明示し、すべての取得に失敗した場合は回答を保存せず、再試行の案内を表示します。関連ページを登録していないテーマでは概要ページのみを参照するため、出典欄が回答中の全仕様を裏付けるとは限りません。
+Geminiへ渡す公式資料は最大3件・本文合計4,000文字です。質問時のURL取得と公式資料用の埋め込みAPI呼び出しは行いません。参照指示は1回だけ渡します。回答末尾には、実際に渡した抜粋の資料名・節・公式URLと資料の取得日を表示し、履歴・コピーにも残します。検索用データの読込に失敗した場合は回答生成を停止し、関連箇所が見つからない場合は一般的な説明であることをモデルへ指示して未一致の通知を表示します。
 
-サイト全体の取り込みやモデルの再学習は行いません。取得した資料を質問ごとの補足情報として利用します。URL contextはリンク先を再帰的に取得しないため、対応する資料は `src/lib/vba-reference.ts` に明示します。取得したページはGeminiの入力トークンに含まれます。モデルを変更する場合は、[URL context対応モデル](https://ai.google.dev/gemini-api/docs/generate-content/url-context)を選んでください。通常のAI活用の質問は従来どおりGeminiの知識と会話を使います。
+検索はキーワード方式で、未知の日本語表現や画像だけの情報には対応できない場合があります。長い表は見出しを繰り返して行単位で分割します。コードを途中で切らず、1,400文字より長いコード・段落・表の単一行は検索用データから除外します。資料は取得時点のスナップショットであり、現在の仕様を確認したとは主張しません。公式URLから原文を確認できます。通常のAI活用の質問はGeminiの知識と会話を使い、教科書の意味検索は従来どおりSupabaseから行います。
+
+公式資料を更新する場合は、`.local/vba-reference/`に検証済みの資料と`catalog.json`を用意して`npm run references:build`を実行します。原本のチェックサムと出典を確認して検索用データを再生成します。`data/vba-reference/manifest.json`に版・出典・ハッシュを記録し、MicrosoftのCC BY 4.0文書ライセンスとMITコードライセンスを保持します。検索用データはGitに含めるため、Netlifyでもローカル原本や新しいDB・接続設定は不要です。更新にはアプリの再ビルドと公開が必要です。
 
 ## 授業の教科書を登録
 
@@ -110,7 +134,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 1. このディレクトリを自分のGitリポジトリにpushします。
 2. Netlifyの **Add new project → Import an existing project** から接続します。
 3. `netlify.toml` がビルドコマンド `npm run build:checked`、公開ディレクトリ `.next`、Node 22を設定します。NetlifyのNext.jsアダプターは自動検出されます。静的HTMLへのexportは使用しません。
-4. NetlifyのEnvironment variablesに `.env.example` の5項目をproductionコンテキストで設定します。GeminiキーはFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
+4. NetlifyのEnvironment variablesに `.env.example` の6項目をproductionコンテキストで設定します。Geminiキーと保存専用鍵はFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
 5. Deployを実行します。環境変数を変更した場合も再デプロイが必要です。
 6. 公開URLで質問・追加質問・履歴・保存・削除を確認します。
 
@@ -142,7 +166,7 @@ git push origin dev
 
 NetlifyのProduction branchは`main`、Branch deploysは**None**、Deploy Previewsは**無効**にします。APIで設定する場合は`allowed_branches: ["main"]`、`skip_prs: true`とします。`allowed_branches: []`は全ブランチの許可になるため使いません。`dev`へのpushとPR作成ではNetlifyにデプロイせず、GitHub Actionsのチェックだけを実行します。本番反映は、ローカルでの確認とCI成功後に`dev`から`main`へのPRをマージして行います。
 
-Netlifyの環境変数の5項目はproductionコンテキストに設定します。ローカル開発用のSupabase・Gemini設定は`.env.development.local`に登録し、本番キーをコピーしません。開発環境で本番の履歴を変更しない構成にします。
+Netlifyの環境変数の6項目はproductionコンテキストに設定します。ローカル開発用のSupabase・Gemini設定は`.env.development.local`に登録し、本番キーをコピーしません。開発環境で本番の履歴を変更しない構成にします。
 
 ## 履歴と運用上の仕様
 
@@ -156,6 +180,7 @@ Netlifyの環境変数の5項目はproductionコンテキストに設定しま�
 - モデルには直近20メッセージを渡します。履歴一覧は更新の新しい100会話を表示します。
 - 質問制限は共通アカウント単位で、**クラス全体で30回/時間**です。Netlifyの複数インスタンスでも共有されます。失敗したGeminiへのリクエストも回数に含みます。
 - 教員向け管理画面、教材アップロード画面、添付画像、個別の生徒アカウントは含みません。
+- 回答内の画像は代替テキストだけを表示し、外部画像を自動取得しません。HTMLを無効にし、CSPでも外部画像・埋め込みを制限します。
 
 ## 開発・確認
 
@@ -163,6 +188,9 @@ Netlifyの環境変数の5項目はproductionコンテキストに設定しま�
 npm run typecheck
 npm test
 npm run build
+npm run security:audit
+# 公式Gitleaks 8.30.1をPATHへ登録後
+npm run security:secrets
 ```
 
 ブラウザテストはCIでダミーの公開接続設定を使い、認証とAPI通信をテスト内だけで模擬します。ローカルで実行する場合も、次の設定でビルドしてテスト専用サーバーを起動します。
@@ -175,6 +203,12 @@ CI=1 NEXT_PUBLIC_SUPABASE_URL=https://linqs-test.supabase.co NEXT_PUBLIC_SUPABAS
 
 DBテストはPGliteのPostgreSQLエンジンで実際のマイグレーション・RLS・権限・トランザクションを検証します。APIテストでは認証とGeminiをモックして、入力上限・認証エラー・回数制限・保存失敗時の動作を確認します。GeminiとSupabaseの本接続は実際の設定後に別途確認してください。
 
+## OSS公開とセキュリティ
+
+Linqs本体のソースコードには[MITライセンス](LICENSE)を用意しています。同梱するMicrosoft公式資料は別ライセンスです。`data/vba-reference/LICENSE`（CC BY 4.0）と`LICENSE-CODE`（MIT）、出典情報を保持してください。授業の教科書・生徒の履歴・秘密情報は公開物に含めません。
+
+公開前にGitHubのSecret scanning・Push protection・Private vulnerability reportingを利用可能な範囲で有効にしてください。[SECURITY.md](SECURITY.md)に報告方法と運用方針を記載しています。GitHub Actionsの`Quality checks`には全Git履歴と公開予定ファイルの秘密情報スキャン、低重大度を含む依存関係の脆弱性チェックを組み込みます。Dependabotは`dev`向けに更新PRを作成し、本番への反映は従来どおり承認後に行います。
+
 ## 構成
 
 ```text
@@ -184,7 +218,10 @@ src/components/learning-app.tsx    学習チャット画面
 src/components/class-login.tsx     クラス共通ログイン画面
 scripts/create-class-account.mjs   共通アカウントの一度限りの発行
 src/lib/tutor.ts                   質問内容・学習経験・回答モードのシステム指示
-src/lib/vba-reference.ts           公式資料の選択・取得指示・取得済み出典の表示
+src/lib/vba-reference.ts           公式資料の抜粋指示・取得済み出典の表示
+src/lib/vba-search.ts              保存済みVBA公式資料の検索・抜粋の上限管理
+data/vba-reference/                公式資料の検索用スナップショット・出典・ライセンス
+scripts/build-vba-reference-index.mjs  検証済み原本から検索用データを再生成
 src/lib/textbooks.ts               教科書の意味検索・抜粋・教材ページの出典表示
 scripts/extract-textbooks.mjs      PDF・Wordの抽出と日本語OCR
 scripts/import-textbooks.mjs       教材ベクトルの生成・クラス専用DBへの登録

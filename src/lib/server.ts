@@ -32,7 +32,14 @@ export async function readJson(request: Request): Promise<unknown> {
 export function getConfig() {
   const values = [process.env.GEMINI_API_KEY, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, process.env.CLASS_ACCOUNT_USER_ID];
   const authReady = values.slice(1).every(Boolean);
-  return { mode: values.every(Boolean) ? "live" : "incomplete", authReady } as const;
+  const writerReady = /^[a-f0-9]{64}$/.test(process.env.SUPABASE_EXCHANGE_WRITE_KEY ?? "");
+  return { mode: values.every(Boolean) && writerReady ? "live" : "incomplete", authReady } as const;
+}
+
+export function exchangeWriteKey() {
+  const key = process.env.SUPABASE_EXCHANGE_WRITE_KEY;
+  if (!key || !/^[a-f0-9]{64}$/.test(key)) throw new ApiError(503, "回答の保存設定を準備中です。管理者に設定をご確認ください。");
+  return key;
 }
 
 export async function authenticate(request: Request) {

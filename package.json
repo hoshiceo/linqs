@@ -12,8 +12,11 @@
     "account:create": "node --env-file=.env.setup scripts/create-class-account.mjs",
     "textbooks:extract": "node scripts/extract-textbooks.mjs",
     "textbooks:import": "node --env-file=.env.local --env-file=.env.setup scripts/import-textbooks.mjs",
+    "references:build": "node scripts/build-vba-reference-index.mjs",
     "build:checked": "npm run typecheck && npm test && npm run build",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "security:audit": "npm audit --audit-level=low",
+    "security:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@google/genai": "2.26.0",
@@ -37,6 +40,9 @@
     "@types/react-dom": "19.3.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
+  },
+  "overrides": {
+    "katex": "$katex"
   },
   "engines": {
     "node": ">=22"

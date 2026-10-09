@@ -6,16 +6,25 @@ const alice = "11111111-1111-4111-8111-111111111111";
 const bob = "22222222-2222-4222-8222-222222222222";
 let db: PGlite;
 let conversationId: string;
+const writerKeys: Record<string, string> = { [alice]: "a".repeat(64), [bob]: "b".repeat(64) };
+let currentUser = alice;
 
 async function asUser(id: string) {
+  currentUser = id;
   await db.exec("reset role");
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [id]);
   await db.exec("set role authenticated");
 }
 
 async function exchange(id: string | null, answer = "考え方の解説です。", subject = "Excel VBA") {
-  const result = await db.query<{ id: string }>("select public.save_question_exchange($1, $2, $3, $4, $5) as id", [id, "セルA1への書き込み", subject, "A1に文字を入力したい", answer]);
+  const ticket = await reserve();
+  const result = await db.query<{ id: string }>("select public.save_question_exchange($1, $2, $3, $4, $5, $6, $7) as id", [id, "セルA1への書き込み", subject, "A1に文字を入力したい", answer, writerKeys[currentUser], ticket]);
   return result.rows[0].id;
+}
+
+async function reserve() {
+  const result = await db.query<{ ticket: string | null }>("select public.reserve_question_exchange($1) as ticket", [writerKeys[currentUser]]);
+  return result.rows[0].ticket;
 }
 
 describe("Supabase migration: ownership, grants, transactions and shared quota", () => {
@@ -24,6 +33,7 @@ describe("Supabase migration: ownership, grants, transactions and shared quota",
     await db.exec(`
       create role anon;
       create role authenticated;
+      create role service_role;
       create schema auth;
       create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as
@@ -33,6 +43,10 @@ describe("Supabase migration: ownership, grants, transactions and shared quota",
     `);
     await db.exec(readFileSync(new URL("../supabase/migrations/001_learning_assistant.sql", import.meta.url), "utf8"));
     await db.exec(readFileSync(new URL("../supabase/migrations/002_vocational_subjects.sql", import.meta.url), "utf8"));
+    await db.exec(readFileSync(new URL("../supabase/migrations/004_server_exchange_writer.sql", import.meta.url), "utf8"));
+    await db.exec("set role service_role");
+    for (const id of [alice, bob]) await db.query("select public.configure_exchange_writer($1, $2)", [id, writerKeys[id]]);
+    await db.exec("reset role");
   });
   afterEach(async () => { await db.exec("reset role"); });
   afterAll(async () => { await db.close(); });
@@ -72,17 +86,50 @@ describe("Supabase migration: ownership, grants, transactions and shared quota",
 
   it("enforces 30 attempts per user per hour and resets after the window", async () => {
     await asUser(alice);
+    await db.exec("reset role");
+    await db.query("delete from public.question_quotas where user_id = $1", [alice]);
+    await asUser(alice);
     for (let i = 0; i < 30; i++) {
-      const result = await db.query<{ allowed: boolean }>("select public.consume_question_quota() as allowed");
-      expect(result.rows[0].allowed).toBe(true);
+      expect(await reserve()).toBeTruthy();
     }
-    expect((await db.query<{ allowed: boolean }>("select public.consume_question_quota() as allowed")).rows[0].allowed).toBe(false);
+    expect(await reserve()).toBeNull();
+    await expect(exchange(null)).rejects.toThrow("Valid unused ticket required");
     await asUser(bob);
-    expect((await db.query<{ allowed: boolean }>("select public.consume_question_quota() as allowed")).rows[0].allowed).toBe(true);
+    expect(await reserve()).toBeTruthy();
     await db.exec("reset role");
     await db.query("update public.question_quotas set window_start = now() - interval '61 minutes' where user_id = $1", [alice]);
     await asUser(alice);
-    expect((await db.query<{ allowed: boolean }>("select public.consume_question_quota() as allowed")).rows[0].allowed).toBe(true);
+    expect(await reserve()).toBeTruthy();
+  });
+
+  it("denies browser-only calls, the old public writer and access to writer keys/tickets", async () => {
+    await asUser(alice);
+    await expect(db.query("select public.save_question_exchange($1, $2, $3, $4, $5)", [null, "fake", "Excel VBA", "fake", "fake assistant"])).rejects.toThrow("does not exist");
+    await expect(db.exec("select public.consume_question_quota()")).rejects.toThrow("permission denied");
+    await expect(db.query("select public.reserve_question_exchange($1)", [null])).rejects.toThrow("Server writer required");
+    await expect(db.query("select public.reserve_question_exchange($1)", ["c".repeat(64)])).rejects.toThrow("Server writer required");
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7)", [null, "fake", "Excel VBA", "fake", "fake", "c".repeat(64), null])).rejects.toThrow("Server writer required");
+    await expect(db.exec("select * from linqs_private.exchange_writers")).rejects.toThrow("permission denied");
+    await expect(db.exec("select * from linqs_private.exchange_tickets")).rejects.toThrow("permission denied");
+    await expect(db.query("select public.configure_exchange_writer($1, $2)", [alice, writerKeys[alice]])).rejects.toThrow("permission denied");
+  });
+
+  it("allows one save per ticket and rejects another owner's or an expired ticket", async () => {
+    await asUser(alice);
+    const ticket = await reserve();
+    const args = [null, "audit", "Excel VBA", "question", "answer", writerKeys[alice], ticket];
+    await asUser(bob);
+    await expect(db.query("select public.reserve_question_exchange($1)", [writerKeys[alice]])).rejects.toThrow("Server writer required");
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7)", [...args.slice(0, 5), writerKeys[bob], ticket])).rejects.toThrow("Valid unused ticket required");
+    await asUser(alice);
+    const result = await db.query<{ id: string }>("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7) as id", args);
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7)", args)).rejects.toThrow("Valid unused ticket required");
+    await db.query("delete from public.conversations where id = $1", [result.rows[0].id]);
+    const expired = await reserve();
+    await db.exec("reset role");
+    await db.query("update linqs_private.exchange_tickets set created_at = clock_timestamp() - interval '6 minutes' where id = $1", [expired]);
+    await asUser(alice);
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7)", [...args.slice(0, 6), expired])).rejects.toThrow("Valid unused ticket required");
   });
 
   it("does not expose data or save functions to unauthenticated visitors", async () => {

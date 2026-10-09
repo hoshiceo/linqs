@@ -3,7 +3,7 @@ import type { Page, Route } from "@playwright/test";
 import type { Conversation } from "../../src/lib/types";
 
 // Network fixtures only: production code always requires the real class account.
-export async function mockClassApi(page: Page, { configured = true }: { configured?: boolean } = {}) {
+export async function mockClassApi(page: Page, { configured = true, answerSuffix = "" }: { configured?: boolean; answerSuffix?: string } = {}) {
   const id = "33333333-3333-4333-8333-333333333333";
   const expires = Math.floor(Date.now() / 1000) + 3600;
   const user = { id, aud: "authenticated", role: "authenticated", email: "class@example.com", is_anonymous: false, app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: new Date().toISOString() };
@@ -51,9 +51,9 @@ export async function mockClassApi(page: Page, { configured = true }: { configur
     if (url.pathname === "/api/chat" && method === "POST") {
       const body = request.postDataJSON();
       const now = new Date().toISOString();
-      const answer = body.mode === "hint"
+      const answer = (body.mode === "hint"
         ? "### まずはヒント\n対象のシートとセルを指定する方法を考えてみましょう。"
-        : "### セルに文字を入力\n```vba\nOption Explicit\nSub Greeting()\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"こんにちは\"\nEnd Sub\n```";
+        : "### セルに文字を入力\n```vba\nOption Explicit\nSub Greeting()\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"こんにちは\"\nEnd Sub\n```") + answerSuffix;
       const previous = conversations.find(c => c.id === body.conversationId);
       const conversation: Conversation = { id: previous?.id || randomUUID(), title: previous?.title || body.message, subject: "すべて", bookmarked: previous?.bookmarked || false, created_at: previous?.created_at || now, updated_at: now, messages: [...(previous?.messages || []), { id: randomUUID(), role: "user", content: body.message, created_at: now }, { id: randomUUID(), role: "assistant", content: answer, created_at: now }] };
       conversations = [conversation, ...conversations.filter(c => c.id !== conversation.id)];
