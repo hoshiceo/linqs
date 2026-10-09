@@ -23,11 +23,12 @@ Node.js 22 LTSとnpmを用意してください。
 
 ```sh
 npm ci
-cp .env.example .env.local
+cp .env.example .env.development.local
+# 開発用のGemini・Supabase設定を.env.development.localに登録
 npm run dev
 ```
 
-http://localhost:3000 を開きます。
+http://localhost:3000 を開きます。既存の`.env.development.local`がある場合は上書きせず編集してください。開発用の接続設定が未登録の場合は、ログインを停止します。
 
 SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキーが未設定でもログインと履歴閲覧を利用できます。AI回答は「準備中」と表示して送信を止め、Geminiキーの設定後に有効になります。接続設定が空またはSupabaseの設定が途中の場合はログインを停止します。回答はGeminiから取得し、接続エラー時はエラーを表示します。
 
@@ -77,7 +78,7 @@ GEMINI_MODEL=gemini-3.8-flash
 
 `GEMINI_MODEL`は利用するプロジェクトで有効なモデルIDに変更できます。APIキーはサーバーの環境変数だけで使用します。`NEXT_PUBLIC_`を付けないでください。
 
-環境変数を変更したら開発サーバーを再起動してください。ヘッダーの「AI接続中」を確認し、質問して、再読み込み後に履歴が残るか確認します。接続バッジは必要な設定の有無を示し、プロバイダーの稼働状態を保証するものではありません。
+環境変数を変更したら開発サーバーを再起動してください。共通アカウントでログインし、質問して、再読み込み後に履歴が残るか確認します。
 
 ## Excel VBAの参照資料
 
@@ -109,7 +110,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 1. このディレクトリを自分のGitリポジトリにpushします。
 2. Netlifyの **Add new project → Import an existing project** から接続します。
 3. `netlify.toml` がビルドコマンド `npm run build:checked`、公開ディレクトリ `.next`、Node 22を設定します。NetlifyのNext.jsアダプターは自動検出されます。静的HTMLへのexportは使用しません。
-4. NetlifyのEnvironment variablesに `.env.example` の5項目を設定します。GeminiキーはFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
+4. NetlifyのEnvironment variablesに `.env.example` の5項目をproductionコンテキストで設定します。GeminiキーはFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
 5. Deployを実行します。環境変数を変更した場合も再デプロイが必要です。
 6. 公開URLで質問・追加質問・履歴・保存・削除を確認します。
 
@@ -120,11 +121,11 @@ Gemini/Supabase/Netlifyの実際のアカウント設定と公開には、利用
 | ブランチ | 公開先 | 接続 |
 | --- | --- | --- |
 | `main` | https://linqs.link-st.art/ | 本番のGemini・Supabase |
-| `dev` | https://dev--linqs-ai.netlify.app/ | 開発専用の設定が必要。未設定時はログイン停止 |
+| `dev` | http://localhost:3000/ | `.env.development.local`の開発用設定。未設定時はログイン停止 |
 
 変更は`dev`で作成します。GitHub Actionsの`Quality checks`で型チェック、API・DBテスト、本番ビルド、デスクトップ・モバイルのブラウザテストを実行します。ブラウザテストはCI内で認証とAPI通信を模擬し、共通アカウントのログイン・質問・履歴操作を確認します。本番データや実際のAPIキーを使用しません。
 
-開発URLで変更内容を確認してから、`dev`から`main`へのPRを作成します。`main`はPRと最新状態での`Quality checks`成功を必須にし、直接push・強制push・ブランチ削除を禁止します。PRの自動マージは使わず、本番反映の指示後にマージします。Netlifyも`npm run build:checked`を実行し、型・API・DBのチェックが失敗した場合は公開しません。
+ローカルの`http://localhost:3000`で変更内容を確認してから、`dev`から`main`へのPRを作成します。`main`はPRと最新状態での`Quality checks`成功を必須にし、直接push・強制push・ブランチ削除を禁止します。PRの自動マージは使わず、本番反映の指示後にマージします。Netlifyも`npm run build:checked`を実行し、型・API・DBのチェックが失敗した場合は公開しません。
 
 ```sh
 git switch dev
@@ -139,7 +140,9 @@ git merge origin/main
 git push origin dev
 ```
 
-NetlifyのProduction branchは`main`、Branch deploysは`dev`だけを指定します。環境変数の5項目はproductionコンテキストのままにし、dev・Deploy Previewsへ本番キーをコピーしません。開発専用のSupabase・Geminiを用意した場合は、その設定をdevのブランチコンテキストに登録してください。ローカル開発の接続設定は`.env.development.local`に登録します。開発環境で本番の履歴を変更しない構成にします。
+NetlifyのProduction branchは`main`、Branch deploysは**None**、Deploy Previewsは**無効**にします。`dev`へのpushとPR作成ではNetlifyにデプロイせず、GitHub Actionsのチェックだけを実行します。本番反映は、ローカルでの確認とCI成功後に`dev`から`main`へのPRをマージして行います。
+
+Netlifyの環境変数の5項目はproductionコンテキストに設定します。ローカル開発用のSupabase・Gemini設定は`.env.development.local`に登録し、本番キーをコピーしません。開発環境で本番の履歴を変更しない構成にします。
 
 ## 履歴と運用上の仕様
 

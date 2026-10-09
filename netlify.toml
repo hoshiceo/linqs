@@ -8,4 +8,5 @@
 
 # Netlify detects Next.js and installs its OpenNext adapter automatically.
 # Set the five variables from .env.example for the production context only.
-# The dev branch and Deploy Previews require separate credentials; login stays disabled while unconfigured.
+# Production branch: main. Disable branch deploys and Deploy Previews in project settings.
+# Develop and review dev locally at http://localhost:3000.
