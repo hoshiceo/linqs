@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npm run build:checked"
   publish = ".next"
 
 [build.environment]
@@ -7,4 +7,5 @@
   NEXT_TELEMETRY_DISABLED = "1"
 
 # Netlify detects Next.js and installs its OpenNext adapter automatically.
-# Set the four variables from .env.example in the Netlify dashboard.
+# Set the five variables from .env.example for the production context only.
+# The dev branch and Deploy Previews use demo mode until separate credentials exist.
