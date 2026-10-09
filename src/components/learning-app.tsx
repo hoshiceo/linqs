@@ -242,7 +242,7 @@ export default function LearningApp() {
       <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
         {conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.slice(0, 5).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
       </div>
-      <div className="sidebar-bottom"><div className="learning-note"><span className="note-icon"><Lightbulb size={19} /></span><p>学んだことを、<br />仕事で使える力に。</p></div>
+      <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
         <button className="profile" onClick={() => setModal("settings")}><span className="avatar"><GraduationCap size={23} /></span><span><strong>{isDemo ? "体験ユーザー" : "クラス共通"}</strong><small>{level}</small></span><Settings2 size={17} /></button>
       </div>

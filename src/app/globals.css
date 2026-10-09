@@ -37,9 +37,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .recent-item span { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .recent-item:hover, .recent-item.selected { color: var(--green); }
 .sidebar-bottom { margin-top: auto; padding-top: 20px; }
-.learning-note { border: 1px solid #e3ebe5; border-radius: 9px; padding: 16px 14px; background: #f0f5f1; display: flex; gap: 12px; align-items: start; }
-.note-icon { color: #76a08a; padding-top: 3px; }
-.learning-note p { font-size: 12px; line-height: 1.9; color: #708378; margin: 0; }
 .help-link { margin-top: 19px; display: flex; align-items: center; gap: 9px; padding: 9px 5px; width: 100%; background: none; border: 0; font-size: 12px; color: #819086; }
 .help-link svg:last-child { margin-left: auto; }
 .help-link:hover { color: var(--green); }
@@ -218,11 +215,11 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 @media (max-width: 480px) { .login-page { padding: 24px 16px; } .login-card { padding: 25px 22px; } .login-card h1 { font-size: 23px; } }
 
 /* Comfortable reading sizes and contrast for Japanese text. */
-.brand-caption, .section-label, .recent-empty, .recent-item, .learning-note p, .help-link, .profile strong, .breadcrumb, .pace-label, .suggestions-label, .question-tip strong, .answer-modes button, .primary-button, .secondary-button, .danger-button, .settings-label, .settings-label select, .guide-step h3, .settings-modes strong { font-size: 14px; }
+.brand-caption, .section-label, .recent-empty, .recent-item, .help-link, .profile strong, .breadcrumb, .pace-label, .suggestions-label, .question-tip strong, .answer-modes button, .primary-button, .secondary-button, .danger-button, .settings-label, .settings-label select, .guide-step h3, .settings-modes strong { font-size: 14px; }
 .welcome-description, .composer textarea, .markdown, .message-user p, .library-heading p, .history-search input, .app-dialog > p { font-size: 16px; }
 .suggestion-card strong { font-size: 15px; }
 .brand-caption { font-size: 12px; }
-.section-label, .recent-empty, .recent-item, .learning-note p, .help-link, .breadcrumb, .pace-label { font-size: 13px; }
+.section-label, .recent-empty, .recent-item, .help-link, .breadcrumb, .pace-label { font-size: 13px; }
 .question-tip small, .card-bottom, .card-tag, .profile small, .connection-badge, .suggestions-label span:last-child, .composer-footnote, .powered, .enter-hint, .guide-step p, .privacy-note, .settings-modes small, .history-open small, .assistant-head > span:last-child:not(.brand), .message-actions button { font-size: 12px; }
 .eyebrow { font-size: 11px; }
 .welcome-description, .question-tip small, .recent-empty, .composer-footnote, .powered, .card-bottom, .card-tag, .guide-step p, .privacy-note, .app-dialog > p, .profile small, .library-heading p, .history-open small { color: #738579; }
