@@ -20,7 +20,7 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await login(page);
-  await expect(page.getByText("AI接続中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   await page.getByRole("button", { name: /セルA1に文字/ }).click();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveValue("Excel VBAでセルA1に文字を入力する方法を教えて");
   await page.getByRole("button", { name: "質問を送信" }).click();
@@ -33,7 +33,7 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
   await page.locator(".history-open").click();
   await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
   await page.reload();
-  await expect(page.getByText("AI接続中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   await navigate(page, "保存した質問");
   await expect(page.locator(".history-card")).toHaveCount(1);
   await navigate(page, "質問の履歴");
@@ -47,7 +47,7 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
 
 test("hint mode, preferences and Japanese composition behave correctly", async ({ page }) => {
   await login(page);
-  await expect(page.getByText("AI接続中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   const menu = page.getByRole("button", { name: "メニューを開く" });
   if (await menu.isVisible()) await menu.click();
   await page.locator(".profile").click();
@@ -64,7 +64,7 @@ test("hint mode, preferences and Japanese composition behave correctly", async (
   await expect(page.locator(".markdown")).toContainText("まずはヒント");
   await expect(page.locator(".markdown")).not.toContainText("セルに文字を入力");
   await page.reload();
-  await expect(page.getByText("AI接続中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   const open = page.getByRole("button", { name: "メニューを開く" });
   if (await open.isVisible()) await open.click();
   await expect(page.locator(".profile")).toContainText("実務に応用");
@@ -72,7 +72,7 @@ test("hint mode, preferences and Japanese composition behave correctly", async (
 
 test("layout stays inside the viewport and dialogs support keyboard dismissal", async ({ page }) => {
   await login(page);
-  await expect(page.getByText("AI接続中", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(await page.locator(".chat-scroll").evaluate(element => element.scrollTop)).toBe(0);
   await page.locator(".question-tip").click();
