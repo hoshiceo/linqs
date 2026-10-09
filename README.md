@@ -108,12 +108,38 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 1. このディレクトリを自分のGitリポジトリにpushします。
 2. Netlifyの **Add new project → Import an existing project** から接続します。
-3. `netlify.toml` がビルドコマンド `npm run build`、公開ディレクトリ `.next`、Node 22を設定します。NetlifyのNext.jsアダプターは自動検出されます。静的HTMLへのexportは使用しません。
+3. `netlify.toml` がビルドコマンド `npm run build:checked`、公開ディレクトリ `.next`、Node 22を設定します。NetlifyのNext.jsアダプターは自動検出されます。静的HTMLへのexportは使用しません。
 4. NetlifyのEnvironment variablesに `.env.example` の5項目を設定します。GeminiキーはFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
 5. Deployを実行します。環境変数を変更した場合も再デプロイが必要です。
 6. 公開URLで質問・追加質問・履歴・保存・削除を確認します。
 
 Gemini/Supabase/Netlifyの実際のアカウント設定と公開には、利用者のアカウントアクセスが必要です。このソースコードだけではリモートのサービスを作成・設定しません。
+
+## mainとdevの運用
+
+| ブランチ | 公開先 | 接続 |
+| --- | --- | --- |
+| `main` | https://linqs.link-st.art/ | 本番のGemini・Supabase |
+| `dev` | https://dev--linqs-ai.netlify.app/ | 体験モード。本接続には開発専用の設定が必要 |
+
+変更は`dev`で作成します。GitHub Actionsの`Quality checks`で型チェック、API・DBテスト、本番ビルド、デスクトップ・モバイルのブラウザテストを実行します。ブラウザテストはCI内で体験モードのサーバーを起動し、本番データやAPIキーを使用しません。
+
+開発URLで変更内容を確認してから、`dev`から`main`へのPRを作成します。`main`はPRと最新状態での`Quality checks`成功を必須にし、直接push・強制push・ブランチ削除を禁止します。PRの自動マージは使わず、本番反映の指示後にマージします。Netlifyも`npm run build:checked`を実行し、型・API・DBのチェックが失敗した場合は公開しません。
+
+```sh
+git switch dev
+git pull --ff-only origin dev
+# 変更・確認・commit後
+git push origin dev
+gh pr create --base main --head dev
+# 開発確認とCI成功後にPRをマージ
+# マージ後はdevへmainのマージ履歴を取り込む
+git fetch origin
+git merge origin/main
+git push origin dev
+```
+
+NetlifyのProduction branchは`main`、Branch deploysは`dev`だけを指定します。環境変数の5項目はproductionコンテキストのままにし、dev・Deploy Previewsへ本番キーをコピーしません。開発専用のSupabase・Geminiを用意した場合は、その設定をdevのブランチコンテキストに登録してください。開発環境で本番の履歴を変更しない構成にします。
 
 ## 履歴と運用上の仕様
 
