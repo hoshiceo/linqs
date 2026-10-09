@@ -32,7 +32,7 @@ export async function readJson(request: Request): Promise<unknown> {
 export function getConfig() {
   const values = [process.env.GEMINI_API_KEY, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, process.env.CLASS_ACCOUNT_USER_ID];
   const authReady = values.slice(1).every(Boolean);
-  return { mode: values.every(Boolean) ? "live" : values.some(Boolean) ? "incomplete" : "demo", authReady } as const;
+  return { mode: values.every(Boolean) ? "live" : "incomplete", authReady } as const;
 }
 
 export async function authenticate(request: Request) {

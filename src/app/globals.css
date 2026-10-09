@@ -207,8 +207,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .login-sharing { display: flex; align-items: start; gap: 8px; font-size: 12px; color: #6b8373; line-height: 1.8; margin: 20px 0 0; }
 .login-sharing svg { flex-shrink: 0; margin-top: 3px; }
 .login-help { font-size: 12px; color: #778d7e; line-height: 1.8; text-align: center; margin: 18px 0 0; }
-.login-demo { display: block; width: 100%; padding: 12px 8px; border: 1px solid #dce8de; border-radius: 8px; color: var(--green); background: #f6faf7; font-size: 14px; }
-.login-demo:hover { background: #ecf5ef; }
 .logout-button { width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; background: none; border: 0; color: #748b7c; padding: 16px 8px 0; font-size: 13px; }
 .logout-button:hover { color: var(--green); }
 .login-card .privacy-note { font-size: 12px; }

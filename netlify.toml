@@ -8,4 +8,4 @@
 
 # Netlify detects Next.js and installs its OpenNext adapter automatically.
 # Set the five variables from .env.example for the production context only.
-# The dev branch and Deploy Previews use demo mode until separate credentials exist.
+# The dev branch and Deploy Previews require separate credentials; login stays disabled while unconfigured.

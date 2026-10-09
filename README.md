@@ -29,7 +29,7 @@ npm run dev
 
 http://localhost:3000 を開きます。
 
-**すべての接続設定が空の場合は体験モード**です。用意したサンプルの回答を表示し、履歴はブラウザのlocalStorageに保存します。自由な質問や追加質問をAIが生成するモードではありません。SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキーが未設定でもログインと履歴閲覧を利用できます。AI回答は「準備中」と表示して送信を止め、Geminiキーの設定後に有効になります。Supabaseの設定自体が途中の場合は、ログインも停止します。接続済みのサービスに障害がある場合も、体験回答へ自動で切り替えません。
+SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキーが未設定でもログインと履歴閲覧を利用できます。AI回答は「準備中」と表示して送信を止め、Geminiキーの設定後に有効になります。接続設定が空またはSupabaseの設定が途中の場合はログインを停止します。回答はGeminiから取得し、接続エラー時はエラーを表示します。
 
 ## GeminiとSupabaseを接続
 
@@ -85,7 +85,7 @@ GEMINI_MODEL=gemini-3.8-flash
 
 回答末尾の「参照した公式資料」には、取得成功のメタデータを確認できた選択済みURLだけを表示します。出典は回答本文と一緒に保存され、履歴・コピーにも残ります。一部の取得失敗は回答に明示し、すべての取得に失敗した場合は回答を保存せず、再試行の案内を表示します。関連ページを登録していないテーマでは概要ページのみを参照するため、出典欄が回答中の全仕様を裏付けるとは限りません。
 
-サイト全体の取り込みやモデルの再学習は行いません。取得した資料を質問ごとの補足情報として利用します。URL contextはリンク先を再帰的に取得しないため、対応する資料は `src/lib/vba-reference.ts` に明示します。取得したページはGeminiの入力トークンに含まれます。モデルを変更する場合は、[URL context対応モデル](https://ai.google.dev/gemini-api/docs/generate-content/url-context)を選んでください。通常のAI活用の質問は従来どおりGeminiの知識と会話を使います。体験モードは固定サンプルで、資料の取得は行いません。
+サイト全体の取り込みやモデルの再学習は行いません。取得した資料を質問ごとの補足情報として利用します。URL contextはリンク先を再帰的に取得しないため、対応する資料は `src/lib/vba-reference.ts` に明示します。取得したページはGeminiの入力トークンに含まれます。モデルを変更する場合は、[URL context対応モデル](https://ai.google.dev/gemini-api/docs/generate-content/url-context)を選んでください。通常のAI活用の質問は従来どおりGeminiの知識と会話を使います。
 
 ## 授業の教科書を登録
 
@@ -102,7 +102,7 @@ GEMINI_MODEL=gemini-3.8-flash
 
 参照欄のPDFページはファイルの先頭からの番号です。Word教材はPDF変換版のページ番号として明記し、元のWord表示のページ番号と一致すると主張しません。教科書の検索が失敗した場合は再試行を案内し、該当箇所が見つからなければその旨を表示します。未登録の教科書について質問された場合は「登録がまだ完了していません」と表示します。教材の原文は命令ではなく資料として扱い、ヒントモードの方針も維持します。
 
-Netlifyの実行環境で教材の抽出処理は不要です。一度登録した教材をSupabaseから検索するので、既存の環境変数だけで利用できます。教材更新時は管理者のローカル環境から再抽出・再登録します。体験モードでは教科書検索を行いません。
+Netlifyの実行環境で教材の抽出処理は不要です。一度登録した教材をSupabaseから検索するので、既存の環境変数だけで利用できます。教材更新時は管理者のローカル環境から再抽出・再登録します。
 
 ## Netlifyで公開
 
@@ -120,9 +120,9 @@ Gemini/Supabase/Netlifyの実際のアカウント設定と公開には、利用
 | ブランチ | 公開先 | 接続 |
 | --- | --- | --- |
 | `main` | https://linqs.link-st.art/ | 本番のGemini・Supabase |
-| `dev` | https://dev--linqs-ai.netlify.app/ | 体験モード。本接続には開発専用の設定が必要 |
+| `dev` | https://dev--linqs-ai.netlify.app/ | 開発専用の設定が必要。未設定時はログイン停止 |
 
-変更は`dev`で作成します。GitHub Actionsの`Quality checks`で型チェック、API・DBテスト、本番ビルド、デスクトップ・モバイルのブラウザテストを実行します。ブラウザテストはCI内で体験モードのサーバーを起動し、本番データやAPIキーを使用しません。
+変更は`dev`で作成します。GitHub Actionsの`Quality checks`で型チェック、API・DBテスト、本番ビルド、デスクトップ・モバイルのブラウザテストを実行します。ブラウザテストはCI内で認証とAPI通信を模擬し、共通アカウントのログイン・質問・履歴操作を確認します。本番データや実際のAPIキーを使用しません。
 
 開発URLで変更内容を確認してから、`dev`から`main`へのPRを作成します。`main`はPRと最新状態での`Quality checks`成功を必須にし、直接push・強制push・ブランチ削除を禁止します。PRの自動マージは使わず、本番反映の指示後にマージします。Netlifyも`npm run build:checked`を実行し、型・API・DBのチェックが失敗した場合は公開しません。
 
@@ -139,7 +139,7 @@ git merge origin/main
 git push origin dev
 ```
 
-NetlifyのProduction branchは`main`、Branch deploysは`dev`だけを指定します。環境変数の5項目はproductionコンテキストのままにし、dev・Deploy Previewsへ本番キーをコピーしません。開発専用のSupabase・Geminiを用意した場合は、その設定をdevのブランチコンテキストに登録してください。開発環境で本番の履歴を変更しない構成にします。
+NetlifyのProduction branchは`main`、Branch deploysは`dev`だけを指定します。環境変数の5項目はproductionコンテキストのままにし、dev・Deploy Previewsへ本番キーをコピーしません。開発専用のSupabase・Geminiを用意した場合は、その設定をdevのブランチコンテキストに登録してください。ローカル開発の接続設定は`.env.development.local`に登録します。開発環境で本番の履歴を変更しない構成にします。
 
 ## 履歴と運用上の仕様
 
@@ -148,7 +148,6 @@ NetlifyのProduction branchは`main`、Branch deploysは`dev`だけを指定し�
 - 「この端末からログアウト」はlocal scopeを使い、他の生徒をログアウトさせません。ブラウザデータを消した場合も、再ログインで履歴を取得できます。
 - Supabaseの「Single session per user」は有効にしないでください。複数端末から同時に使う構成です。
 - 学習経験と解説・ヒントの設定は端末ごとに保存されます。
-- 体験モードの履歴と本接続の履歴は別です。体験履歴をクラウドへ自動移行しません。
 - 本接続の質問内容は回答のためGeminiに送信され、Supabaseに保存されます。画面の使い方にも表示しています。
 - Geminiの回答が成功して保存が失敗した場合は、回答と未保存通知を表示します。その会話の追加送信を止め、保存された文脈と表示の食い違いを防ぎます。
 - モデルには直近20メッセージを渡します。履歴一覧は更新の新しい100会話を表示します。
@@ -163,11 +162,12 @@ npm test
 npm run build
 ```
 
-ブラウザテストは起動済みの開発サーバーを対象にします。
+ブラウザテストはCIでダミーの公開接続設定を使い、認証とAPI通信をテスト内だけで模擬します。ローカルで実行する場合も、次の設定でビルドしてテスト専用サーバーを起動します。
 
 ```sh
 npx playwright install chromium
-npx playwright test
+NEXT_PUBLIC_SUPABASE_URL=https://linqs-test.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci-public-test-key npm run build
+CI=1 NEXT_PUBLIC_SUPABASE_URL=https://linqs-test.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci-public-test-key npm run test:browser
 ```
 
 DBテストはPGliteのPostgreSQLエンジンで実際のマイグレーション・RLS・権限・トランザクションを検証します。APIテストでは認証とGeminiをモックして、入力上限・認証エラー・回数制限・保存失敗時の動作を確認します。GeminiとSupabaseの本接続は実際の設定後に別途確認してください。
@@ -185,7 +185,7 @@ src/lib/vba-reference.ts           公式資料の選択・取得指示・取得
 src/lib/textbooks.ts               教科書の意味検索・抜粋・教材ページの出典表示
 scripts/extract-textbooks.mjs      PDF・Wordの抽出と日本語OCR
 scripts/import-textbooks.mjs       教材ベクトルの生成・クラス専用DBへの登録
-src/lib/demo.ts                    体験用サンプル
+src/lib/suggestions.ts             質問入力の例
 supabase/migrations/               テーブル・RLS・保存関数・質問回数制限
 netlify.toml                       Netlifyビルド設定
 ```
