@@ -1,0 +1,3 @@
+# Preserve the official license files byte-for-byte, including upstream spacing.
+data/vba-reference/LICENSE -whitespace
+data/vba-reference/LICENSE-CODE -whitespace

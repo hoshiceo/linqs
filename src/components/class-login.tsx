@@ -5,13 +5,11 @@ import { BookOpen, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Sparkles } fro
 
 type Props = {
   ready: boolean;
-  demo: boolean;
   error: string;
   onLogin: (email: string, password: string) => Promise<void>;
-  onDemo: () => void;
 };
 
-export default function ClassLogin({ ready, demo, error: initialError, onLogin, onDemo }: Props) {
+export default function ClassLogin({ ready, error: initialError, onLogin }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
@@ -44,7 +42,6 @@ export default function ClassLogin({ ready, demo, error: initialError, onLogin, 
       </form>
       <p className="login-sharing"><BookOpen size={17} /><span>質問の履歴・保存した質問は、クラス全員で共有します。</span></p>
       {!ready && <div className="privacy-note">共通アカウントの接続設定がまだ完了していません。設定完了後にログインできます。</div>}
-      {demo && <button className="login-demo" onClick={onDemo}>体験モードを開く</button>}
       <p className="login-help">ログイン情報がわからないときは、講師にご確認ください。</p>
     </div>
   </main>;
