@@ -103,7 +103,7 @@ test("a failed AI request shows an error and restores the question", async ({ pa
   await page.route("**/api/chat", route => route.fulfill({ status: 502, json: { error: "AIが回答できませんでした。もう一度お試しください。" } }));
   await page.getByRole("button", { name: /セルA1に文字/ }).click();
   await page.getByRole("button", { name: "質問を送信" }).click();
-  await expect(page.getByRole("alert")).toContainText("AIが回答できませんでした");
+  await expect(page.getByRole("alert").filter({ hasText: "AIが回答できませんでした" })).toBeVisible();
   await expect(page.locator(".markdown")).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveValue("Excel VBAでセルA1に文字を入力する方法を教えて");
 });
@@ -114,6 +114,6 @@ test("an incorrect class password does not open the learning space", async ({ pa
   await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
   await page.getByLabel("パスワード", { exact: true }).fill("wrong-test-password");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("ログインできませんでした");
+  await expect(page.getByRole("alert").filter({ hasText: "ログインできませんでした" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveCount(0);
 });
