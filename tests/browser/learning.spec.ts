@@ -9,8 +9,8 @@ async function navigate(page: Page, label: string) {
   await page.getByRole("button", { name: new RegExp(`^${label}(?:\\s+\\d+)?$`) }).click();
 }
 
-async function login(page: Page) {
-  await mockClassApi(page);
+async function login(page: Page, options?: Parameters<typeof mockClassApi>[1]) {
+  await mockClassApi(page, options);
   await page.goto("/");
   await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
   await page.getByLabel("パスワード", { exact: true }).fill("test-password");
@@ -45,6 +45,70 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
   await page.getByRole("button", { name: "削除する", exact: true }).click();
   await expect(page.locator(".history-card")).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("long answers open at their beginning and offer a deliberate jump to the end", async ({ page }) => {
+  await login(page, { answerSuffix: "\n\n" + Array.from({ length: 18 }, (_, index) => `## 手順${index + 1}\n\n対象のシートとセルを確認します。変数の宣言と値の設定を順番に試してください。`).join("\n\n") });
+  const input = page.getByRole("textbox", { name: "質問を入力" });
+  await input.fill("VBAを長い手順で説明してください");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  const answer = page.locator(".latest-answer");
+  const startOffset = () => answer.evaluate(element => element.getBoundingClientRect().top - document.querySelector(".chat-scroll")!.getBoundingClientRect().top);
+  await expect.poll(startOffset).toBeGreaterThanOrEqual(20);
+  await expect.poll(startOffset).toBeLessThanOrEqual(28);
+  await expect(answer.getByRole("heading", { name: "セルに文字を入力" })).toBeInViewport();
+  await expect(answer.getByRole("heading", { name: "手順18", exact: true })).not.toBeInViewport();
+  await page.screenshot({ path: `test-results/answer-start-${test.info().project.name}.png` });
+  await page.getByRole("button", { name: "回答の末尾へ", exact: true }).click();
+  await expect(answer.getByRole("heading", { name: "手順18", exact: true })).toBeInViewport();
+  await expect(answer.getByRole("button", { name: "コピー", exact: true })).toBeInViewport();
+  await input.fill("もう一度説明してください");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toHaveCount(2);
+  await expect.poll(startOffset).toBeGreaterThanOrEqual(20);
+  await expect.poll(startOffset).toBeLessThanOrEqual(28);
+  await navigate(page, "質問の履歴");
+  await page.locator(".history-open").click();
+  await expect.poll(startOffset).toBeGreaterThanOrEqual(20);
+  await expect.poll(startOffset).toBeLessThanOrEqual(28);
+});
+
+test("even short follow-up answers start at the top of the reading area", async ({ page }) => {
+  await login(page);
+  for (const question of ["VBAを教えて", "短く説明して"]) {
+    await page.getByRole("textbox", { name: "質問を入力" }).fill(question);
+    await page.getByRole("button", { name: "質問を送信" }).click();
+    await expect(page.locator(".thinking")).toHaveCount(0);
+    await expect.poll(() => page.locator(".latest-answer").evaluate(element => element.getBoundingClientRect().top - document.querySelector(".chat-scroll")!.getBoundingClientRect().top)).toBeGreaterThanOrEqual(20);
+    await expect.poll(() => page.locator(".latest-answer").evaluate(element => element.getBoundingClientRect().top - document.querySelector(".chat-scroll")!.getBoundingClientRect().top)).toBeLessThanOrEqual(28);
+    await expect(page.locator(".latest-answer pre code")).toBeInViewport();
+    await expect(page.getByRole("button", { name: "回答の末尾へ" })).toHaveCount(0);
+  }
+  await page.screenshot({ path: `test-results/answer-short-${test.info().project.name}.png` });
+});
+
+test("receiving an answer does not pull a reader away from an earlier answer", async ({ page }) => {
+  await login(page, { answerSuffix: "\n\n" + "以前の説明を読み返しています。\n\n".repeat(50) });
+  const input = page.getByRole("textbox", { name: "質問を入力" });
+  await input.fill("最初の質問");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toHaveCount(1);
+  let releaseAnswer!: () => void;
+  const waiting = new Promise<void>(resolve => { releaseAnswer = resolve; });
+  await page.route("**/api/chat", async route => {
+    await waiting;
+    await route.fulfill({ json: { answer: "### 新しい回答\n\n新しい質問への説明です。", conversationId: route.request().postDataJSON().conversationId, saved: true } });
+  });
+  await input.fill("次の質問");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".thinking")).toBeVisible();
+  await page.locator(".chat-scroll").evaluate(element => { element.scrollTop = 0; });
+  await expect(page.locator(".markdown").first().getByRole("heading", { name: "セルに文字を入力" })).toBeInViewport();
+  releaseAnswer();
+  await expect(page.locator(".markdown")).toHaveCount(2);
+  await expect.poll(() => page.locator(".chat-scroll").evaluate(element => element.scrollTop)).toBe(0);
+  await page.getByRole("button", { name: "最新の回答の先頭へ" }).click();
+  await expect(page.locator(".latest-answer").getByRole("heading", { name: "新しい回答" })).toBeInViewport();
 });
 
 test("hint mode, preferences and Japanese composition behave correctly", async ({ page }) => {
