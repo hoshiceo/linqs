@@ -41,7 +41,7 @@ export default function ClassLogin({ ready, error: initialError, onLogin }: Prop
         {(error || initialError) && <div className="alert error" role="alert">{error || initialError}</div>}
         <button className="primary-button full-width login-submit" type="submit" disabled={!ready || busy || !email.trim() || !password}>{busy ? "ログインしています…" : "ログイン"}</button>
       </form>
-      <p className="login-sharing"><BookOpen size={17} /><span>質問の履歴・保存した質問は、クラス全員で共有します。</span></p>
+      <p className="login-sharing"><BookOpen size={17} /><span>質問の履歴はクラス全員で共有します。保存した質問は、この端末のブラウザごとに管理します。</span></p>
       {!ready && <div className="privacy-note">共通アカウントの接続設定がまだ完了していません。設定完了後にログインできます。</div>}
       <p className="login-help">ログイン情報がわからないときは、講師にご確認ください。</p>
     </div>

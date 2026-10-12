@@ -8,6 +8,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser
 import * as vbaSearch from "../src/lib/vba-search";
 import { POST } from "../src/app/api/chat/route";
 import { GET as account } from "../src/app/api/account/route";
+import { PATCH as sharedBookmark } from "../src/app/api/conversations/route";
 
 const id = "33333333-3333-4333-8333-333333333333";
 const ticket = "44444444-4444-4444-8444-444444444444";
@@ -42,6 +43,15 @@ describe("Chat API boundary", () => {
     expect((await POST(request())).status).toBe(503);
     expect(mocks.generateContent).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it("asks cached clients to reload instead of updating a shared bookmark", async () => {
+    const response = await sharedBookmark(new Request("http://localhost/api/conversations", {
+      method: "PATCH", headers: { Authorization: "Bearer valid-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ id, bookmarked: true }),
+    }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("再読み込み");
+    expect(mocks.from).not.toHaveBeenCalled();
   });
   it("does not enable login until all class account settings are present", async () => {
     vi.stubEnv("CLASS_ACCOUNT_USER_ID", "");

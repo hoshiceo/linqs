@@ -8,7 +8,4 @@ export const chatSchema = z.object({
   mode: z.enum(["explain", "hint"]),
 });
 
-export const conversationPatchSchema = z.object({
-  id: z.uuid(),
-  bookmarked: z.boolean(),
-});
+export const conversationIdSchema = z.uuid();

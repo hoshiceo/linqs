@@ -19,6 +19,8 @@ async function login(page: Page, options?: Parameters<typeof mockClassApi>[1]) {
 }
 
 test("a student can ask, save, find, reopen and delete a question", async ({ page }) => {
+  const sharedBookmarkRequests: string[] = [];
+  page.on("request", request => { if (request.method() === "PATCH") sharedBookmarkRequests.push(request.url()); });
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await login(page);
@@ -45,6 +47,34 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
   await page.getByRole("button", { name: "削除する", exact: true }).click();
   await expect(page.locator(".history-card")).toHaveCount(0);
   expect(errors).toEqual([]);
+  expect(sharedBookmarkRequests).toEqual([]);
+});
+
+test("bookmarks are independent between devices and survive reload and shared history refresh", async ({ page, browser }) => {
+  const conversation = { id: "33333333-3333-4333-8333-333333333333", title: "端末別に保存する質問", subject: "すべて" as const, bookmarked: true, created_at: "2026-10-12T00:00:00Z", updated_at: "2026-10-12T00:00:00Z", messages: [] };
+  const secondContext = await browser.newContext({ viewport: page.viewportSize()! });
+  const second = await secondContext.newPage();
+  async function signIn(target: Page) {
+    await login(target, { initialConversations: [conversation] });
+    await navigate(target, "保存した質問");
+    await expect(target.locator(".history-card")).toHaveCount(1);
+    await expect(target.getByRole("button", { name: "この質問を削除" })).toHaveCount(0);
+  }
+  try {
+    await signIn(page); await signIn(second);
+    await page.getByRole("button", { name: "保存を解除", exact: true }).click();
+    await expect(page.locator(".history-card")).toHaveCount(0);
+    await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
+    await expect(page.locator(".history-card")).toHaveCount(0);
+    await page.reload(); await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+    await navigate(page, "保存した質問"); await expect(page.locator(".history-card")).toHaveCount(0);
+    await second.reload(); await expect(second.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+    await navigate(second, "保存した質問"); await expect(second.locator(".history-card")).toHaveCount(1);
+    if (await second.getByRole("button", { name: "メニューを開く" }).isVisible()) {
+      await expect.poll(() => second.locator(".sidebar").evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+    }
+    await second.screenshot({ path: `test-results/device-bookmarks-${test.info().project.name}.png` });
+  } finally { await secondContext.close(); }
 });
 
 test("long answers open at their beginning and offer a deliberate jump to the end", async ({ page }) => {
