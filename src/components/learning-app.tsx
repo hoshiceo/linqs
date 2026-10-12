@@ -10,11 +10,11 @@ import { apiFetch, getSupabase, signInClassAccount, signOutClassAccount } from "
 import ClassLogin from "./class-login";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
-import { learningLevels, type AnswerMode, type AppConfig, type Conversation, type LearningLevel, type Message, type Subject } from "@/lib/types";
+import type { AnswerMode, AppConfig, Conversation, Message, Subject } from "@/lib/types";
 
 const icons = { "すべて": Sparkles, "AI活用": Sparkles, "Excel VBA": FileSpreadsheet };
 const subjectClass = (subject: Subject) => subject === "Excel VBA" ? "subject-vba" : "subject-ai";
-// Keep the preference key so existing learning settings are preserved.
+// Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
 type View = "chat" | "history" | "bookmarks";
 
@@ -31,7 +31,6 @@ export default function LearningApp() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
-  const [level, setLevel] = useState<LearningLevel>("はじめて");
   const [mode, setMode] = useState<AnswerMode>("explain");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,7 +62,6 @@ export default function LearningApp() {
       try {
         try {
           const preference = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
-          if (learningLevels.includes(preference.level)) setLevel(preference.level);
           if (["explain", "hint"].includes(preference.mode)) setMode(preference.mode);
         } catch { /* Defaults remain usable when browser storage is unavailable. */ }
         const response = await fetch("/api/config", { cache: "no-store" });
@@ -122,9 +120,9 @@ export default function LearningApp() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(PREF_KEY, JSON.stringify({ level, mode }));
-    } catch { setWarning("学習経験と回答スタイルをこの端末に保存できませんでした。"); }
-  }, [level, mode, loaded]);
+      localStorage.setItem(PREF_KEY, JSON.stringify({ mode }));
+    } catch { setWarning("回答スタイルをこの端末に保存できませんでした。"); }
+  }, [mode, loaded]);
 
   useEffect(() => {
     const scrollArea = messagesRef.current;
@@ -187,7 +185,7 @@ export default function LearningApp() {
     setBusy(true); setPendingQuestion(question); setInput(""); setError(""); setWarning(""); setView("chat");
     try {
       const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
-        method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, level, mode }),
+        method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, mode }),
       });
       const answer = result.answer;
       const id = result.conversationId || previousId || crypto.randomUUID();
@@ -265,7 +263,7 @@ export default function LearningApp() {
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
-        <button className="profile" onClick={() => setModal("settings")}><span className="avatar"><GraduationCap size={23} /></span><span><strong>クラス共通</strong><small>{level}</small></span><Settings2 size={17} /></button>
+        <button className="profile" onClick={() => setModal("settings")}><span className="avatar"><GraduationCap size={23} /></span><span><strong>クラス共通</strong><small>{mode === "hint" ? "まずはヒント" : "じっくり解説"}</small></span><Settings2 size={17} /></button>
       </div>
     </aside>
 
@@ -317,7 +315,7 @@ export default function LearningApp() {
 
     <dialog className="app-dialog" ref={dialogRef} onCancel={() => { setModal(null); setDeleteId(null); }} onClick={e => { if (e.target === e.currentTarget) { setModal(null); setDeleteId(null); } }}>
       <button className="dialog-close icon-button" aria-label="閉じる" onClick={() => { setModal(null); setDeleteId(null); }}><X size={20} /></button>
-      {deleteId ? <><span className="dialog-symbol"><Trash2 size={24} /></span><h2>この質問を削除しますか？</h2><p>質問と回答がクラス全員の履歴から消えます。元に戻すことはできません。</p><div className="dialog-actions"><button className="secondary-button" onClick={() => setDeleteId(null)}>キャンセル</button><button className="danger-button" onClick={removeConversation}>削除する</button></div></> : modal === "guide" ? <><span className="dialog-symbol"><Lightbulb size={25} /></span><div className="eyebrow">A LITTLE HELP</div><h2>質問を具体的に伝えるコツ</h2><p>授業の疑問や、実習で困った点をそのまま質問できます。</p><div className="guide-step"><span>01</span><div><h3>やりたいことを伝える</h3><p>「AIで業務メールの下書きを作る手順を教えて」</p></div></div><div className="guide-step"><span>02</span><div><h3>コード・エラー・環境を添える</h3><p>「Windows版Excelで実行時エラー1004が出ます」＋該当コードとエラー全文</p></div></div><div className="guide-step"><span>03</span><div><h3>自分で考えたいときは、ヒントを</h3><p>入力欄の「ヒント」に切り替えると、次の一歩を考えるための手がかりを示します。</p></div></div><div className="guide-step"><span>04</span><div><h3>公式資料で確認する</h3><p>VBAの質問では、保存済みのMicrosoft公式資料から関連する抜粋を探し、出典リンクと資料の取得日を回答に表示します。<a href={EXCEL_VBA_REFERENCE_URL} target="_blank" rel="noopener noreferrer">Microsoft LearnのExcel VBAリファレンスを開く</a></p></div></div><div className="guide-step"><span>05</span><div><h3>教科書の質問には、教材名とページを</h3><p>登録された教科書から関連箇所を探して回答します。「VBAの教科書で、変数の宣言を説明して」のように伝えてください。参照ページはPDFの先頭から数えた番号です。</p></div></div><div className="privacy-note">氏名・顧客情報・社内機密・パスワードは入力せず、架空のデータに置き換えてください。質問は回答のためGeminiに送信され、Supabaseに保存されます。質問と保存した履歴はクラス全員で共有します。</div><button className="primary-button full-width" onClick={() => setModal(null)}>質問を始める</button></> : modal === "settings" ? <><span className="dialog-symbol"><GraduationCap size={26} /></span><div className="eyebrow">JUST FOR YOU</div><h2>学習経験に合わせた解説</h2><p>AI活用・Excel VBAの学習経験に合わせて、用語や説明の詳しさを調整します。</p><label className="settings-label">学習経験<select value={level} onChange={e => setLevel(e.target.value as LearningLevel)}>{learningLevels.map(g => <option key={g}>{g}</option>)}</select></label><div className="settings-label">回答のスタイル</div><div className="settings-modes"><button className={mode === "explain" ? "selected" : ""} onClick={() => setMode("explain")}><Sparkles size={20} /><strong>じっくり解説</strong><small>答えと考え方を知りたい</small></button><button className={mode === "hint" ? "selected" : ""} onClick={() => setMode("hint")}><Lightbulb size={20} /><strong>まずはヒント</strong><small>自分の力で考えたい</small></button></div><div className="privacy-note">クラスの履歴は共有されます。別端末の質問は、履歴画面の更新ボタンで確認できます。学習経験と回答スタイルはこの端末だけに保存されます。</div><button className="primary-button full-width" onClick={() => setModal(null)}>設定を完了</button><button className="logout-button" onClick={logout} disabled={busy}><LogOut size={16} />この端末からログアウト</button></> : null}
+      {deleteId ? <><span className="dialog-symbol"><Trash2 size={24} /></span><h2>この質問を削除しますか？</h2><p>質問と回答がクラス全員の履歴から消えます。元に戻すことはできません。</p><div className="dialog-actions"><button className="secondary-button" onClick={() => setDeleteId(null)}>キャンセル</button><button className="danger-button" onClick={removeConversation}>削除する</button></div></> : modal === "guide" ? <><span className="dialog-symbol"><Lightbulb size={25} /></span><div className="eyebrow">A LITTLE HELP</div><h2>質問を具体的に伝えるコツ</h2><p>授業の疑問や、実習で困った点をそのまま質問できます。</p><div className="guide-step"><span>01</span><div><h3>やりたいことを伝える</h3><p>「AIで業務メールの下書きを作る手順を教えて」</p></div></div><div className="guide-step"><span>02</span><div><h3>コード・エラー・環境を添える</h3><p>「Windows版Excelで実行時エラー1004が出ます」＋該当コードとエラー全文</p></div></div><div className="guide-step"><span>03</span><div><h3>自分で考えたいときは、ヒントを</h3><p>入力欄の「ヒント」に切り替えると、次の一歩を考えるための手がかりを示します。</p></div></div><div className="guide-step"><span>04</span><div><h3>公式資料で確認する</h3><p>VBAの質問では、保存済みのMicrosoft公式資料から関連する抜粋を探し、出典リンクと資料の取得日を回答に表示します。<a href={EXCEL_VBA_REFERENCE_URL} target="_blank" rel="noopener noreferrer">Microsoft LearnのExcel VBAリファレンスを開く</a></p></div></div><div className="guide-step"><span>05</span><div><h3>教科書の質問には、教材名とページを</h3><p>登録された教科書から関連箇所を探して回答します。「VBAの教科書で、変数の宣言を説明して」のように伝えてください。参照ページはPDFの先頭から数えた番号です。</p></div></div><div className="privacy-note">氏名・顧客情報・社内機密・パスワードは入力せず、架空のデータに置き換えてください。質問は回答のためGeminiに送信され、Supabaseに保存されます。質問と保存した履歴はクラス全員で共有します。</div><button className="primary-button full-width" onClick={() => setModal(null)}>質問を始める</button></> : modal === "settings" ? <><span className="dialog-symbol"><GraduationCap size={26} /></span><div className="eyebrow">JUST FOR YOU</div><h2>回答のスタイル</h2><p>詳しい解説か、考えるためのヒントかを選べます。</p><div className="settings-modes" aria-label="回答のスタイル"><button className={mode === "explain" ? "selected" : ""} onClick={() => setMode("explain")}><Sparkles size={20} /><strong>じっくり解説</strong><small>答えと考え方を知りたい</small></button><button className={mode === "hint" ? "selected" : ""} onClick={() => setMode("hint")}><Lightbulb size={20} /><strong>まずはヒント</strong><small>自分の力で考えたい</small></button></div><div className="privacy-note">クラスの履歴は共有されます。別端末の質問は、履歴画面の更新ボタンで確認できます。回答スタイルはこの端末だけに保存されます。</div><button className="primary-button full-width" onClick={() => setModal(null)}>設定を完了</button><button className="logout-button" onClick={logout} disabled={busy}><LogOut size={16} />この端末からログアウト</button></> : null}
     </dialog>
   </div>;
 }
