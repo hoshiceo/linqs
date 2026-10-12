@@ -8,6 +8,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { apiFetch, getSupabase, signInClassAccount, signOutClassAccount } from "@/lib/supabase-client";
 import ClassLogin from "./class-login";
+import Logo from "./logo";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
 import type { AnswerMode, AppConfig, Conversation, Message, Subject } from "@/lib/types";
@@ -17,10 +18,6 @@ const subjectClass = (subject: Subject) => subject === "Excel VBA" ? "subject-vb
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
 type View = "chat" | "history" | "bookmarks";
-
-function Logo({ small = false }: { small?: boolean }) {
-  return <span className={`brand ${small ? "brand-small" : ""}`}><span className="brand-symbol"><Sparkles size={small ? 18 : 24} strokeWidth={1.7} /></span>{!small && <span>Linqs</span>}</span>;
-}
 
 function Markdown({ content }: { content: string }) {
   return <div className="markdown"><ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { trust: false, maxSize: 32, maxExpand: 1000 }]]} components={{ img: ({ alt }) => <span>{alt}</span>, a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{content}</ReactMarkdown></div>;
@@ -277,7 +274,7 @@ export default function LearningApp() {
           if (busy && pendingQuestionRef.current && messagesRef.current && pendingQuestionRef.current.getBoundingClientRect().top > messagesRef.current.getBoundingClientRect().top + 64) readingEarlierRef.current = true;
         }}>
           {!hasChat ? <div className="welcome">
-            <div className="welcome-icon"><Sparkles size={30} strokeWidth={1.5} /></div>
+            <div className="welcome-icon"><Logo small /></div>
             <div className="eyebrow">AI & VBA LEARNING</div>
             <h1>AIとVBAを、<br /><span>実務につなげる。</span></h1>
             <p className="welcome-description">授業の疑問から、業務に使うコードまで。<br className="mobile-only" />基礎から、ご自身のペースで。</p>

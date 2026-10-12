@@ -16,9 +16,8 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .app-shell { display: flex; height: 100dvh; min-height: 550px; overflow: hidden; }
 .sidebar { flex: 0 0 252px; width: 252px; background: #f7f9f8; border-right: 1px solid var(--line); padding: 34px 22px 0; display: flex; flex-direction: column; }
 .sidebar-brand { padding: 0 10px; position: relative; }
-.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 40px; letter-spacing: -2.2px; font-weight: 700; line-height: 1; }
-.brand-symbol { height: 36px; width: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--green); color: white; }
-.brand-period { color: #9bbfb2; }
+.brand { display: inline-flex; width: 176px; max-width: 100%; flex-shrink: 0; vertical-align: middle; }
+.brand img { display: block; width: 100%; height: auto; }
 .brand-caption { display: block; color: #71817a; font-size: 12px; margin: 13px 0 32px; letter-spacing: .045em; }
 .new-chat { border: 1px solid var(--green); background: var(--green); color: white; border-radius: 9px; height: 45px; font-size: 14px; font-weight: 500; display: flex; gap: 12px; justify-content: center; align-items: center; box-shadow: 0 3px 6px #087e7210; }
 .new-chat:hover, .primary-button:hover, .send-button:not(:disabled):hover { background: var(--green-dark); }
@@ -109,7 +108,7 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .message-user .message-content { background: #f2f4f3; border-radius: 18px; padding: 13px 19px; max-width: 85%; }
 .message-user p { margin: 0; font-size: 14px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
 .assistant-head { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; }
-.brand-small .brand-symbol { width: 26px; height: 26px; border-radius: 8px; }
+.brand-small { width: 32px; }
 .assistant-head strong { font-size: 14px; color: var(--green); }
 .assistant-head > span:last-child:not(.brand) { color: #9caaa1; font-size: 11px; margin-left: 4px; }
 .message-assistant .message-content, .message-actions, .thinking { padding-left: 0; }
@@ -192,7 +191,8 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .mobile-menu, .mobile-close, .mobile-only { display: none; }
 
 .login-page { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 38px 22px; background: #f5f9f6; }
-.login-brand { display: flex; align-items: center; gap: 10px; color: var(--green); font-size: 34px; font-weight: 700; letter-spacing: -1.5px; margin-bottom: 24px; }
+.login-brand { display: flex; align-items: center; margin-bottom: 24px; }
+.login-brand .brand { width: 192px; }
 .login-card { width: min(440px, 100%); padding: 32px; border: 1px solid #dce8df; border-radius: 18px; background: white; box-shadow: 0 12px 45px #20563809; }
 .login-card h1 { font-size: 25px; font-weight: 600; margin: 11px 0 13px; }
 .login-description { font-size: 14px; color: #718777; line-height: 1.95; margin-bottom: 27px; }
@@ -244,7 +244,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 44px); }
   .welcome { padding-top: 28px; padding-bottom: 18px; }
   .welcome-icon { width: 47px; height: 47px; border-radius: 15px; margin-bottom: 15px; }
-  .welcome-icon svg { width: 26px; }
   .welcome h1 { font-size: 30px; line-height: 1.5; margin-top: 10px; margin-bottom: 10px; }
   .welcome-description { font-size: 14px; }
   .suggestions-label { font-size: 13px; }
