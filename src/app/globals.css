@@ -184,8 +184,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .privacy-note { font-size: 11px; color: #8d9b8a; line-height: 1.9; padding: 13px 15px; background: #f6f8f3; border-radius: 8px; margin: 22px 0; }
 .full-width { width: 100%; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-.settings-label { display: block; font-size: 12px; color: #647c66; margin: 24px 0 11px; }
-.settings-label select { display: block; width: 100%; border: 1px solid #dfe8de; background: #fafcf8; color: #547157; border-radius: 8px; padding: 11px; margin-top: 9px; font-size: 13px; }
 .settings-modes { display: flex; gap: 10px; }
 .settings-modes button { flex: 1; padding: 15px 10px; text-align: left; border: 1px solid #e5ece2; border-radius: 10px; color: #88a085; background: white; }
 .settings-modes button.selected { border-color: #8db99b; background: #f1f8ef; }
@@ -216,7 +214,7 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 @media (max-width: 480px) { .login-page { padding: 24px 16px; } .login-card { padding: 25px 22px; } .login-card h1 { font-size: 23px; } }
 
 /* Comfortable reading sizes and contrast for Japanese text. */
-.brand-caption, .section-label, .recent-empty, .recent-item, .help-link, .profile strong, .breadcrumb, .suggestions-label, .question-tip strong, .answer-modes button, .primary-button, .secondary-button, .danger-button, .settings-label, .settings-label select, .guide-step h3, .settings-modes strong { font-size: 14px; }
+.brand-caption, .section-label, .recent-empty, .recent-item, .help-link, .profile strong, .breadcrumb, .suggestions-label, .question-tip strong, .answer-modes button, .primary-button, .secondary-button, .danger-button, .guide-step h3, .settings-modes strong { font-size: 14px; }
 .welcome-description, .composer textarea, .markdown, .message-user p, .library-heading p, .history-search input, .app-dialog > p { font-size: 16px; }
 .suggestion-card strong { font-size: 15px; }
 .brand-caption { font-size: 12px; }

@@ -112,12 +112,16 @@ test("receiving an answer does not pull a reader away from an earlier answer", a
 });
 
 test("hint mode, preferences and Japanese composition behave correctly", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("yui.preferences.v1")) localStorage.setItem("yui.preferences.v1", JSON.stringify({ level: "実務に応用", mode: "explain" }));
+  });
   await login(page);
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   const menu = page.getByRole("button", { name: "メニューを開く" });
   if (await menu.isVisible()) await menu.click();
   await page.locator(".profile").click();
-  await page.getByRole("combobox", { name: "学習経験", exact: true }).selectOption("実務に応用");
+  await expect(page.getByRole("heading", { name: "回答のスタイル", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "学習経験", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /まずはヒント/ }).click();
   await page.getByRole("button", { name: "設定を完了" }).click();
   const close = page.getByRole("button", { name: "メニューを閉じる" }).last();
@@ -126,14 +130,23 @@ test("hint mode, preferences and Japanese composition behave correctly", async (
   const input = page.getByRole("textbox", { name: "質問を入力" });
   await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true });
   await expect(page.locator(".markdown")).toHaveCount(0);
+  const submitted = page.waitForRequest(request => new URL(request.url()).pathname === "/api/chat" && request.method() === "POST");
   await input.press("Enter");
+  const payload = (await submitted).postDataJSON();
+  expect(payload.mode).toBe("hint");
+  expect(payload).not.toHaveProperty("level");
   await expect(page.locator(".markdown")).toContainText("まずはヒント");
   await expect(page.locator(".markdown")).not.toContainText("セルに文字を入力");
   await page.reload();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   const open = page.getByRole("button", { name: "メニューを開く" });
   if (await open.isVisible()) await open.click();
-  await expect(page.locator(".profile")).toContainText("実務に応用");
+  await expect(page.locator(".profile")).toContainText("まずはヒント");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("yui.preferences.v1")!))).toEqual({ mode: "hint" });
+  await page.locator(".profile").click();
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).not.toContainText("学習経験");
+  await page.screenshot({ path: `test-results/answer-style-settings-${test.info().project.name}.png` });
 });
 
 test("layout stays inside the viewport and dialogs support keyboard dismissal", async ({ page }) => {

@@ -15,7 +15,7 @@ const writerKey = "a".repeat(64);
 function request(overrides = {}, headers: Record<string, string> = {}) {
   return new Request("http://localhost:3000/api/chat", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer valid-token", ...headers },
-    body: JSON.stringify({ conversationId: null, message: "セルA1に文字を入力する方法を教えて", subject: "Excel VBA", level: "はじめて", mode: "hint", ...overrides }),
+    body: JSON.stringify({ conversationId: null, message: "セルA1に文字を入力する方法を教えて", subject: "Excel VBA", mode: "hint", ...overrides }),
   });
 }
 
@@ -68,7 +68,7 @@ describe("Chat API boundary", () => {
   it("rejects oversized, empty and malformed questions without model cost", async () => {
     expect((await POST(request({ message: "x".repeat(3001) }))).status).toBe(400);
     expect((await POST(request({ message: "  " }))).status).toBe(400);
-    expect((await POST(request({ level: "中学2年生" }))).status).toBe(400);
+    expect((await POST(request({ mode: "invalid" }))).status).toBe(400);
     expect((await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { Authorization: "Bearer valid-token" }, body: "{" }))).status).toBe(400);
     expect(mocks.generateContent).not.toHaveBeenCalled();
   });
@@ -90,7 +90,7 @@ describe("Chat API boundary", () => {
     expect((await POST(request())).status).toBe(429);
     expect(mocks.generateContent).not.toHaveBeenCalled();
   });
-  it("passes the learning level and hint mode, then persists only after successful generation", async () => {
+  it("passes hint mode without a learning level, then persists only after successful generation", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     const result = await response.json();
@@ -103,7 +103,7 @@ describe("Chat API boundary", () => {
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).not.toContain("保存済みのMicrosoft VBA公式資料");
     expect(mocks.embedContent).not.toHaveBeenCalled();
     expect(mocks.rpc.mock.calls.find(call => call[0] === "save_question_exchange")?.[1].p_answer).toBe(result.answer);
-    expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("はじめて");
+    expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).not.toContain("学習経験");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("Excel VBA");
     expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("ヒントモード");
     expect(mocks.rpc.mock.calls.at(-1)?.[0]).toBe("save_question_exchange");
@@ -111,6 +111,12 @@ describe("Chat API boundary", () => {
     expect(mocks.rpc.mock.calls.at(-1)?.[1]).toMatchObject({ p_write_key: writerKey, p_ticket: ticket });
     expect(JSON.stringify(result)).not.toContain(writerKey);
     expect(JSON.stringify(mocks.generateContent.mock.calls)).not.toContain(writerKey);
+  });
+  it("ignores a retired learning level from cached clients without changing the model instruction", async () => {
+    expect((await POST(request())).status).toBe(200);
+    const instruction = mocks.generateContent.mock.calls[0][0].config.systemInstruction;
+    expect((await POST(request({ level: "実務に応用" }))).status).toBe(200);
+    expect(mocks.generateContent.mock.calls[1][0].config.systemInstruction).toBe(instruction);
   });
   it("answers without a subject selection and finds VBA sources from the question", async () => {
     const response = await POST(request({ subject: undefined }));
