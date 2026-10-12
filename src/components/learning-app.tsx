@@ -12,6 +12,7 @@ import Logo from "./logo";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
 import type { AnswerMode, AppConfig, Conversation, Message, Subject } from "@/lib/types";
+import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggleDeviceBookmark } from "@/lib/device-bookmarks";
 
 const icons = { "すべて": Sparkles, "AI活用": Sparkles, "Excel VBA": FileSpreadsheet };
 const subjectClass = (subject: Subject) => subject === "Excel VBA" ? "subject-vba" : "subject-ai";
@@ -26,6 +27,8 @@ function Markdown({ content }: { content: string }) {
 export default function LearningApp() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
+  const [bookmarksReady, setBookmarksReady] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
   const [mode, setMode] = useState<AnswerMode>("explain");
@@ -52,6 +55,18 @@ export default function LearningApp() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
+  const savedIds = new Set(bookmarkIds);
+
+  function applyHistory(history: Conversation[]) {
+    setConversations(history);
+    try {
+      setBookmarkIds(loadDeviceBookmarks(localStorage, history.filter(c => c.bookmarked).map(c => c.id)));
+      setBookmarksReady(true);
+    } catch {
+      setBookmarksReady(false);
+      setWarning("このブラウザの保存した質問を読み込めませんでした。ブラウザの保存設定をご確認ください。");
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -74,7 +89,7 @@ export default function LearningApp() {
           if (!alive) return;
           setClassSignedIn(true);
           const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-          if (alive) setConversations(result.conversations);
+          if (alive) applyHistory(result.conversations);
         } else {
           setLoginError("クラスアカウントの接続設定が途中です。管理者に設定をご確認ください。");
         }
@@ -90,7 +105,7 @@ export default function LearningApp() {
     setLoginError(""); setError(""); setClassSignedIn(true);
     try {
       const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-      setConversations(result.conversations);
+      applyHistory(result.conversations);
     } catch (e) { setError(e instanceof Error ? e.message : "履歴を取得できませんでした。"); }
   }
 
@@ -109,7 +124,7 @@ export default function LearningApp() {
     setRefreshing(true);
     try {
       const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-      setConversations(result.conversations); setError("");
+      applyHistory(result.conversations); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "履歴を更新できませんでした。"); }
     finally { setRefreshing(false); }
   }
@@ -120,6 +135,16 @@ export default function LearningApp() {
       localStorage.setItem(PREF_KEY, JSON.stringify({ mode }));
     } catch { setWarning("回答スタイルをこの端末に保存できませんでした。"); }
   }, [mode, loaded]);
+
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage || (event.key !== DEVICE_BOOKMARKS_KEY && event.key !== null)) return;
+      try { setBookmarkIds(loadDeviceBookmarks(localStorage)); setBookmarksReady(true); }
+      catch { setBookmarksReady(false); setWarning("このブラウザの保存した質問を読み込めませんでした。"); }
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
 
   useEffect(() => {
     const scrollArea = messagesRef.current;
@@ -213,12 +238,11 @@ export default function LearningApp() {
     scrollArea.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 
-  async function bookmark(c: Conversation) {
-    const next = !c.bookmarked;
+  function bookmark(c: Conversation) {
+    if (!bookmarksReady) return;
     try {
-      if (c.persisted !== false) await apiFetch("/api/conversations", { method: "PATCH", body: JSON.stringify({ id: c.id, bookmarked: next }) });
-      setConversations(current => current.map(item => item.id === c.id ? { ...item, bookmarked: next } : item));
-    } catch (e) { setError(e instanceof Error ? e.message : "保存できませんでした。"); }
+      setBookmarkIds(toggleDeviceBookmark(localStorage, c.id));
+    } catch { setError("このブラウザに保存できませんでした。ブラウザの保存設定をご確認ください。"); }
   }
 
   async function removeConversation() {
@@ -226,6 +250,8 @@ export default function LearningApp() {
     try {
       if (conversations.find(c => c.id === deleteId)?.persisted !== false) await apiFetch(`/api/conversations?id=${deleteId}`, { method: "DELETE" });
       setConversations(current => current.filter(c => c.id !== deleteId));
+      try { setBookmarkIds(removeDeviceBookmark(localStorage, deleteId)); }
+      catch { setWarning("質問は削除しましたが、このブラウザの保存マークを更新できませんでした。"); }
       if (activeId === deleteId) { setActiveId(null); setView("chat"); }
       setDeleteId(null);
     } catch (e) { setDeleteId(null); setError(e instanceof Error ? e.message : "削除できませんでした。"); }
@@ -238,7 +264,7 @@ export default function LearningApp() {
     } catch { setError("コピーできませんでした。回答の文字を選択してコピーしてください。"); }
   }
 
-  const filtered = conversations.filter(c => (view !== "bookmarks" || c.bookmarked) && `${c.title} ${c.messages.map(m => m.content).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  const filtered = conversations.filter(c => (view !== "bookmarks" || savedIds.has(c.id)) && `${c.title} ${c.messages.map(m => m.content).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
   const nav = (target: View) => { if (!busy) { readingEarlierRef.current = false; setView(target); setQuery(""); setMobileOpen(false); } };
   const hasChat = messages.length > 0 || busy;
 
@@ -268,7 +294,7 @@ export default function LearningApp() {
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
 
       {view === "chat" ? <>
-        {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${active.bookmarked ? "is-saved" : ""}`} onClick={() => bookmark(active)} aria-label={active.bookmarked ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={active.bookmarked ? "currentColor" : "none"} /></button>}</div> : null}
+        {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${savedIds.has(active.id) ? "is-saved" : ""}`} onClick={() => bookmark(active)} disabled={!bookmarksReady} aria-label={savedIds.has(active.id) ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={savedIds.has(active.id) ? "currentColor" : "none"} /></button>}</div> : null}
         <div className="chat-area">
         <div className={`chat-scroll ${hasChat ? "has-messages" : ""}`} ref={messagesRef} onScroll={() => {
           if (busy && pendingQuestionRef.current && messagesRef.current && pendingQuestionRef.current.getBoundingClientRect().top > messagesRef.current.getBoundingClientRect().top + 64) readingEarlierRef.current = true;
@@ -304,15 +330,15 @@ export default function LearningApp() {
           </form>
           <div className="composer-footnote"><span>AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。</span><span className="powered"><Sparkles size={11} />{config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>
-      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "もう一度読みたい解説をまとめて確認できます。"}</p><button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button></div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
-        {error && <div className="alert error" role="alert">{error}</div>}
-        {filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${c.bookmarked ? "is-saved" : ""}`} aria-label={c.bookmarked ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)}><Bookmark size={18} fill={c.bookmarked ? "currentColor" : "none"} /></button><button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button></div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
+      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "このブラウザに保存した質問です。保存・解除はほかの端末に影響しません。"}</p><button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button></div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
+        {error && <div className="alert error" role="alert">{error}</div>}{warning && <div className="alert warning" role="status">{warning}</div>}
+        {filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${savedIds.has(c.id) ? "is-saved" : ""}`} aria-label={savedIds.has(c.id) ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)} disabled={!bookmarksReady}><Bookmark size={18} fill={savedIds.has(c.id) ? "currentColor" : "none"} /></button>{view === "history" && <button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button>}</div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
       </div>}
     </main>
 
     <dialog className="app-dialog" ref={dialogRef} onCancel={() => { setModal(null); setDeleteId(null); }} onClick={e => { if (e.target === e.currentTarget) { setModal(null); setDeleteId(null); } }}>
       <button className="dialog-close icon-button" aria-label="閉じる" onClick={() => { setModal(null); setDeleteId(null); }}><X size={20} /></button>
-      {deleteId ? <><span className="dialog-symbol"><Trash2 size={24} /></span><h2>この質問を削除しますか？</h2><p>質問と回答がクラス全員の履歴から消えます。元に戻すことはできません。</p><div className="dialog-actions"><button className="secondary-button" onClick={() => setDeleteId(null)}>キャンセル</button><button className="danger-button" onClick={removeConversation}>削除する</button></div></> : modal === "guide" ? <><span className="dialog-symbol"><Lightbulb size={25} /></span><div className="eyebrow">A LITTLE HELP</div><h2>質問を具体的に伝えるコツ</h2><p>授業の疑問や、実習で困った点をそのまま質問できます。</p><div className="guide-step"><span>01</span><div><h3>やりたいことを伝える</h3><p>「AIで業務メールの下書きを作る手順を教えて」</p></div></div><div className="guide-step"><span>02</span><div><h3>コード・エラー・環境を添える</h3><p>「Windows版Excelで実行時エラー1004が出ます」＋該当コードとエラー全文</p></div></div><div className="guide-step"><span>03</span><div><h3>自分で考えたいときは、ヒントを</h3><p>入力欄の「ヒント」に切り替えると、次の一歩を考えるための手がかりを示します。</p></div></div><div className="guide-step"><span>04</span><div><h3>公式資料で確認する</h3><p>VBAの質問では、保存済みのMicrosoft公式資料から関連する抜粋を探し、出典リンクと資料の取得日を回答に表示します。<a href={EXCEL_VBA_REFERENCE_URL} target="_blank" rel="noopener noreferrer">Microsoft LearnのExcel VBAリファレンスを開く</a></p></div></div><div className="guide-step"><span>05</span><div><h3>教科書の質問には、教材名とページを</h3><p>登録された教科書から関連箇所を探して回答します。「VBAの教科書で、変数の宣言を説明して」のように伝えてください。参照ページはPDFの先頭から数えた番号です。</p></div></div><div className="privacy-note">氏名・顧客情報・社内機密・パスワードは入力せず、架空のデータに置き換えてください。質問は回答のためGeminiに送信され、Supabaseに保存されます。質問と保存した履歴はクラス全員で共有します。</div><button className="primary-button full-width" onClick={() => setModal(null)}>質問を始める</button></> : modal === "settings" ? <><span className="dialog-symbol"><GraduationCap size={26} /></span><div className="eyebrow">JUST FOR YOU</div><h2>回答のスタイル</h2><p>詳しい解説か、考えるためのヒントかを選べます。</p><div className="settings-modes" aria-label="回答のスタイル"><button className={mode === "explain" ? "selected" : ""} onClick={() => setMode("explain")}><Sparkles size={20} /><strong>じっくり解説</strong><small>答えと考え方を知りたい</small></button><button className={mode === "hint" ? "selected" : ""} onClick={() => setMode("hint")}><Lightbulb size={20} /><strong>まずはヒント</strong><small>自分の力で考えたい</small></button></div><div className="privacy-note">クラスの履歴は共有されます。別端末の質問は、履歴画面の更新ボタンで確認できます。回答スタイルはこの端末だけに保存されます。</div><button className="primary-button full-width" onClick={() => setModal(null)}>設定を完了</button><button className="logout-button" onClick={logout} disabled={busy}><LogOut size={16} />この端末からログアウト</button></> : null}
+      {deleteId ? <><span className="dialog-symbol"><Trash2 size={24} /></span><h2>この質問を削除しますか？</h2><p>質問と回答がクラス全員の履歴から消えます。元に戻すことはできません。</p><div className="dialog-actions"><button className="secondary-button" onClick={() => setDeleteId(null)}>キャンセル</button><button className="danger-button" onClick={removeConversation}>削除する</button></div></> : modal === "guide" ? <><span className="dialog-symbol"><Lightbulb size={25} /></span><div className="eyebrow">A LITTLE HELP</div><h2>質問を具体的に伝えるコツ</h2><p>授業の疑問や、実習で困った点をそのまま質問できます。</p><div className="guide-step"><span>01</span><div><h3>やりたいことを伝える</h3><p>「AIで業務メールの下書きを作る手順を教えて」</p></div></div><div className="guide-step"><span>02</span><div><h3>コード・エラー・環境を添える</h3><p>「Windows版Excelで実行時エラー1004が出ます」＋該当コードとエラー全文</p></div></div><div className="guide-step"><span>03</span><div><h3>自分で考えたいときは、ヒントを</h3><p>入力欄の「ヒント」に切り替えると、次の一歩を考えるための手がかりを示します。</p></div></div><div className="guide-step"><span>04</span><div><h3>公式資料で確認する</h3><p>VBAの質問では、保存済みのMicrosoft公式資料から関連する抜粋を探し、出典リンクと資料の取得日を回答に表示します。<a href={EXCEL_VBA_REFERENCE_URL} target="_blank" rel="noopener noreferrer">Microsoft LearnのExcel VBAリファレンスを開く</a></p></div></div><div className="guide-step"><span>05</span><div><h3>教科書の質問には、教材名とページを</h3><p>登録された教科書から関連箇所を探して回答します。「VBAの教科書で、変数の宣言を説明して」のように伝えてください。参照ページはPDFの先頭から数えた番号です。</p></div></div><div className="privacy-note">氏名・顧客情報・社内機密・パスワードは入力せず、架空のデータに置き換えてください。質問は回答のためGeminiに送信され、Supabaseに保存されます。質問と保存した履歴はクラス全員で共有します。</div><button className="primary-button full-width" onClick={() => setModal(null)}>質問を始める</button></> : modal === "settings" ? <><span className="dialog-symbol"><GraduationCap size={26} /></span><div className="eyebrow">JUST FOR YOU</div><h2>回答のスタイル</h2><p>詳しい解説か、考えるためのヒントかを選べます。</p><div className="settings-modes" aria-label="回答のスタイル"><button className={mode === "explain" ? "selected" : ""} onClick={() => setMode("explain")}><Sparkles size={20} /><strong>じっくり解説</strong><small>答えと考え方を知りたい</small></button><button className={mode === "hint" ? "selected" : ""} onClick={() => setMode("hint")}><Lightbulb size={20} /><strong>まずはヒント</strong><small>自分の力で考えたい</small></button></div><div className="privacy-note">クラスの履歴は共有されます。別端末の質問は、履歴画面の更新ボタンで確認できます。保存した質問と回答スタイルは、この端末のブラウザごとに保存されます。</div><button className="primary-button full-width" onClick={() => setModal(null)}>設定を完了</button><button className="logout-button" onClick={logout} disabled={busy}><LogOut size={16} />この端末からログアウト</button></> : null}
     </dialog>
   </div>;
 }
