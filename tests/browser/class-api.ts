@@ -4,6 +4,9 @@ import type { Conversation } from "../../src/lib/types";
 
 // Network fixtures only: production code always requires the real class account.
 export async function mockClassApi(page: Page, { configured = true, answerSuffix = "", initialConversations = [] }: { configured?: boolean; answerSuffix?: string; initialConversations?: Conversation[] } = {}) {
+  // Functional checks use fallback fonts so the font CDN cannot block navigation.
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
+  await page.route("https://fonts.gstatic.com/**", route => route.abort());
   const id = "33333333-3333-4333-8333-333333333333";
   const expires = Math.floor(Date.now() / 1000) + 3600;
   const user = { id, aud: "authenticated", role: "authenticated", email: "class@example.com", is_anonymous: false, app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: new Date().toISOString() };

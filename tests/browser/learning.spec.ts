@@ -58,13 +58,16 @@ test("bookmarks are independent between devices and survive reload and shared hi
     await login(target, { initialConversations: [conversation] });
     await navigate(target, "保存した質問");
     await expect(target.locator(".history-card")).toHaveCount(1);
+    await expect(target.getByRole("button", { name: "クラスの履歴を更新" })).toHaveCount(0);
     await expect(target.getByRole("button", { name: "この質問を削除" })).toHaveCount(0);
   }
   try {
     await signIn(page); await signIn(second);
     await page.getByRole("button", { name: "保存を解除", exact: true }).click();
     await expect(page.locator(".history-card")).toHaveCount(0);
+    await navigate(page, "質問の履歴");
     await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
+    await navigate(page, "保存した質問");
     await expect(page.locator(".history-card")).toHaveCount(0);
     await page.reload(); await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
     await navigate(page, "保存した質問"); await expect(page.locator(".history-card")).toHaveCount(0);
