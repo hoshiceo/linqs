@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { BookOpen, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Sparkles } from "lucide-react";
+import { BookOpen, Eye, EyeOff, GraduationCap, LockKeyhole, Mail } from "lucide-react";
+import Logo from "./logo";
 
 type Props = {
   ready: boolean;
@@ -26,7 +27,7 @@ export default function ClassLogin({ ready, error: initialError, onLogin }: Prop
   }
 
   return <main className="login-page">
-    <div className="login-brand"><span className="brand-symbol"><Sparkles size={24} /></span><span>Linqs</span></div>
+    <div className="login-brand"><Logo /></div>
     <div className="login-card">
       <span className="dialog-symbol"><GraduationCap size={28} /></span>
       <div className="eyebrow">OUR CLASSROOM</div>
