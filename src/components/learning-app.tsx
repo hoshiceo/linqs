@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUpRight, Bookmark, Check, ChevronRight, CircleHelp, Copy, FileSpreadsheet, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Bookmark, Check, ChevronRight, CircleHelp, Copy, FileSpreadsheet, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -47,8 +47,12 @@ export default function LearningApp() {
   const [classSignedIn, setClassSignedIn] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [answerJump, setAnswerJump] = useState<"start" | "end" | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const latestAnswerRef = useRef<HTMLDivElement>(null);
+  const pendingQuestionRef = useRef<HTMLDivElement>(null);
+  const readingEarlierRef = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
@@ -125,9 +129,30 @@ export default function LearningApp() {
   useEffect(() => {
     const scrollArea = messagesRef.current;
     if (!scrollArea) return;
-    const showLatest = messages.length > 0 || Boolean(pendingQuestion);
-    scrollArea.scrollTo({ top: showLatest ? scrollArea.scrollHeight : 0, behavior: showLatest ? "smooth" : "auto" });
-  }, [messages.length, pendingQuestion, busy, view, activeId]);
+    const updateJump = () => {
+      const answer = latestAnswerRef.current;
+      const actions = answer?.querySelector(".message-actions");
+      const bounds = scrollArea.getBoundingClientRect();
+      setAnswerJump(answer && actions
+        ? answer.getBoundingClientRect().top > bounds.top + 64 ? "start"
+          : actions.getBoundingClientRect().bottom > bounds.bottom + 16 ? "end" : null
+        : null);
+    };
+    const resize = new ResizeObserver(() => {
+      scrollArea.style.setProperty("--chat-height", `${scrollArea.clientHeight}px`);
+      updateJump();
+    });
+    scrollArea.style.setProperty("--chat-height", `${scrollArea.clientHeight}px`);
+    resize.observe(scrollArea);
+    scrollArea.addEventListener("scroll", updateJump, { passive: true });
+    const target = pendingQuestion ? pendingQuestionRef.current : latestAnswerRef.current;
+    // Do not move a reader who scrolled back while the answer was being prepared.
+    if (!readingEarlierRef.current || pendingQuestion) {
+      scrollArea.scrollTo({ top: target ? Math.max(0, target.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop - 24) : 0, behavior: "auto" });
+    }
+    updateJump();
+    return () => { resize.disconnect(); scrollArea.removeEventListener("scroll", updateJump); };
+  }, [messages.length, pendingQuestion, view, activeId, classSignedIn]);
 
   useEffect(() => {
     if (modal || deleteId) dialogRef.current?.showModal();
@@ -136,12 +161,14 @@ export default function LearningApp() {
 
   function newChat() {
     if (busy) return;
+    readingEarlierRef.current = false;
     setActiveId(null); setView("chat"); setInput(""); setError(""); setWarning(""); setMobileOpen(false);
     requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }
 
   function openConversation(c: Conversation) {
     if (busy) return;
+    readingEarlierRef.current = false;
     setActiveId(c.id); setView("chat"); setMobileOpen(false); setError(""); setWarning(""); setInput("");
   }
 
@@ -156,6 +183,7 @@ export default function LearningApp() {
     if (!question || busy || !loaded || !classSignedIn || config?.mode !== "live" || active?.persisted === false) return;
     const previousId = activeId;
     const previousMessages = active?.messages ?? [];
+    readingEarlierRef.current = false;
     setBusy(true); setPendingQuestion(question); setInput(""); setError(""); setWarning(""); setView("chat");
     try {
       const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
@@ -180,6 +208,14 @@ export default function LearningApp() {
       setBusy(false); setPendingQuestion(null);
       requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
     }
+  }
+
+  function jumpToAnswer() {
+    const scrollArea = messagesRef.current;
+    const answer = latestAnswerRef.current;
+    if (!scrollArea || !answer) return;
+    const top = answerJump === "end" ? scrollArea.scrollHeight : answer.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop - 24;
+    scrollArea.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }
 
   async function bookmark(c: Conversation) {
@@ -208,7 +244,7 @@ export default function LearningApp() {
   }
 
   const filtered = conversations.filter(c => (view !== "bookmarks" || c.bookmarked) && `${c.title} ${c.messages.map(m => m.content).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
-  const nav = (target: View) => { if (!busy) { setView(target); setQuery(""); setMobileOpen(false); } };
+  const nav = (target: View) => { if (!busy) { readingEarlierRef.current = false; setView(target); setQuery(""); setMobileOpen(false); } };
   const hasChat = messages.length > 0 || busy;
 
   if (!loaded) return <main className="login-page"><div className="login-brand"><Logo /></div><p className="login-help">学習スペースを準備しています…</p></main>;
@@ -238,7 +274,10 @@ export default function LearningApp() {
 
       {view === "chat" ? <>
         {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${active.bookmarked ? "is-saved" : ""}`} onClick={() => bookmark(active)} aria-label={active.bookmarked ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={active.bookmarked ? "currentColor" : "none"} /></button>}</div> : null}
-        <div className={`chat-scroll ${hasChat ? "has-messages" : ""}`} ref={messagesRef}>
+        <div className="chat-area">
+        <div className={`chat-scroll ${hasChat ? "has-messages" : ""}`} ref={messagesRef} onScroll={() => {
+          if (busy && pendingQuestionRef.current && messagesRef.current && pendingQuestionRef.current.getBoundingClientRect().top > messagesRef.current.getBoundingClientRect().top + 64) readingEarlierRef.current = true;
+        }}>
           {!hasChat ? <div className="welcome">
             <div className="welcome-icon"><Sparkles size={30} strokeWidth={1.5} /></div>
             <div className="eyebrow">AI & VBA LEARNING</div>
@@ -248,15 +287,17 @@ export default function LearningApp() {
             <div className="suggestion-grid">{suggestions.map((s, index) => { const Icon = icons[s.subject]; return <button className={`suggestion-card card-${index}`} key={s.title} onClick={() => selectSuggestion(s.prompt)}><span className={`subject-icon ${subjectClass(s.subject)}`}><Icon size={21} strokeWidth={1.7} /></span><span className="card-tag">{s.tag}</span><strong>{s.title}</strong><span className="card-bottom">この質問からはじめる<ArrowUpRight size={15} /></span></button>; })}</div>
             <button className="question-tip" onClick={() => setModal("guide")}><span className="tip-bulb"><Lightbulb size={20} /></span><span><strong>コードやエラー文も添えてください。</strong><small>やりたいこと・試したこと・実際の結果を伝えると、質問が具体的になります。</small></span><ChevronRight size={17} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
-            {messages.map(message => <div className={`message message-${message.role}`} key={message.id}>
+            {messages.map((message, index) => <div className={`message message-${message.role}${index === messages.length - 1 && message.role === "assistant" ? " latest-answer" : ""}`} key={message.id} ref={index === messages.length - 1 && message.role === "assistant" ? latestAnswerRef : undefined}>
               {message.role === "assistant" && <div className="assistant-head"><Logo small /><strong>Linqs</strong><span>学習パートナー</span></div>}
               <div className="message-content">{message.role === "assistant" ? <Markdown content={message.content} /> : <p>{message.content}</p>}</div>
               {message.role === "assistant" && <div className="message-actions"><button onClick={() => copyMessage(message)}>{copied === message.id ? <Check size={14} /> : <Copy size={14} />}{copied === message.id ? "コピーしました" : "コピー"}</button><span>{new Date(message.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span></div>}
             </div>)}
-            {pendingQuestion && <div className="message message-user"><div className="message-content"><p>{pendingQuestion}</p></div></div>}
-            {busy && <div className="message message-assistant"><div className="assistant-head"><Logo small /><strong>Linqs</strong></div><div className="thinking"><span /><span /><span /><p>質問の内容を確認しています</p></div></div>}
+            {pendingQuestion && <div className="message message-user" ref={pendingQuestionRef}><div className="message-content"><p>{pendingQuestion}</p></div></div>}
+            {busy && <div className="message message-assistant latest-answer"><div className="assistant-head"><Logo small /><strong>Linqs</strong></div><div className="thinking"><span /><span /><span /><p>質問の内容を確認しています</p></div></div>}
             {!busy && messages.length > 0 && <div className="followup-prompt"><Sparkles size={15} />疑問が残ったら、そのまま続けて質問できます。</div>}
           </div>}
+        </div>
+        {answerJump && !busy && <button className="answer-jump" onClick={jumpToAnswer} aria-label={answerJump === "start" ? "最新の回答の先頭へ" : "回答の末尾へ"} title={answerJump === "start" ? "最新の回答の先頭へ" : "回答の末尾へ"}><ArrowDown size={18} /></button>}
         </div>
         <div className="composer-area">
           {config?.authReady && config.mode === "incomplete" && <div className="alert warning" role="status">AIの回答機能は準備中です。ログインと履歴の閲覧は利用できます。</div>}
