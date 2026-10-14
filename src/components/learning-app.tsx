@@ -272,7 +272,7 @@ export default function LearningApp() {
   return <div className="app-shell">
     {mobileOpen && <button className="mobile-overlay" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="メインメニュー">
-      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><span className="brand-caption">AI・VBAの学習パートナー</span><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
+      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><span className="brand-caption">LinktoLinkの教科書に基づいて回答</span><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
       <button className="new-chat" onClick={newChat} disabled={busy}><Plus size={19} />新しい質問</button>
       <nav className="main-nav">
         <button className={view === "chat" ? "active" : ""} onClick={() => nav("chat")} disabled={busy}><MessageCircle size={19} />AIに質問<span className="nav-active-dot" /></button>
@@ -299,7 +299,7 @@ export default function LearningApp() {
         }}>
           {!hasChat ? <div className="welcome">
             <h1>何を知りたいですか？</h1>
-            <p className="welcome-description">AIの使い方やExcel VBAについて質問できます。</p>
+            <p className="welcome-description">LinktoLinkの教科書をもとに、質問に回答します。</p>
             <div className="suggestion-grid" aria-label="質問の例">{suggestions.map(s => <button type="button" className="suggestion-card" key={s.title} onClick={() => selectSuggestion(s.prompt)}>{s.title}</button>)}</div>
             <button type="button" className="question-tip" onClick={() => setModal("guide")}>質問のコツ<ChevronRight size={15} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
