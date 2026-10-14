@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDown, ArrowUpRight, Bookmark, Check, ChevronRight, CircleHelp, Copy, FileSpreadsheet, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, Bookmark, Check, ChevronRight, CircleHelp, Copy, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -11,11 +11,9 @@ import ClassLogin from "./class-login";
 import Logo from "./logo";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
-import type { AnswerMode, AppConfig, Conversation, Message, Subject } from "@/lib/types";
+import type { AnswerMode, AppConfig, Conversation, Message } from "@/lib/types";
 import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggleDeviceBookmark } from "@/lib/device-bookmarks";
 
-const icons = { "すべて": Sparkles, "AI活用": Sparkles, "Excel VBA": FileSpreadsheet };
-const subjectClass = (subject: Subject) => subject === "Excel VBA" ? "subject-vba" : "subject-ai";
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
 type View = "chat" | "history" | "bookmarks";
@@ -290,7 +288,7 @@ export default function LearningApp() {
       </div>
     </aside>
 
-    <main className="main-panel">
+    <main className={`main-panel${view === "chat" && !hasChat ? " is-home" : ""}`}>
       <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
 
       {view === "chat" ? <>
@@ -300,13 +298,10 @@ export default function LearningApp() {
           if (busy && pendingQuestionRef.current && messagesRef.current && pendingQuestionRef.current.getBoundingClientRect().top > messagesRef.current.getBoundingClientRect().top + 64) readingEarlierRef.current = true;
         }}>
           {!hasChat ? <div className="welcome">
-            <div className="welcome-icon"><Logo small /></div>
-            <div className="eyebrow">AI & VBA LEARNING</div>
-            <h1>AIとVBAを、<br /><span>実務につなげる。</span></h1>
-            <p className="welcome-description">授業の疑問から、業務に使うコードまで。<br className="mobile-only" />基礎から、ご自身のペースで。</p>
-            <div className="suggestions-label"><span>ここから質問を始めましょう</span><span>質問の例</span></div>
-            <div className="suggestion-grid">{suggestions.map((s, index) => { const Icon = icons[s.subject]; return <button className={`suggestion-card card-${index}`} key={s.title} onClick={() => selectSuggestion(s.prompt)}><span className={`subject-icon ${subjectClass(s.subject)}`}><Icon size={21} strokeWidth={1.7} /></span><span className="card-tag">{s.tag}</span><strong>{s.title}</strong><span className="card-bottom">この質問からはじめる<ArrowUpRight size={15} /></span></button>; })}</div>
-            <button className="question-tip" onClick={() => setModal("guide")}><span className="tip-bulb"><Lightbulb size={20} /></span><span><strong>コードやエラー文も添えてください。</strong><small>やりたいこと・試したこと・実際の結果を伝えると、質問が具体的になります。</small></span><ChevronRight size={17} /></button>
+            <h1>何を知りたいですか？</h1>
+            <p className="welcome-description">AIの使い方やExcel VBAについて質問できます。</p>
+            <div className="suggestion-grid" aria-label="質問の例">{suggestions.map(s => <button type="button" className="suggestion-card" key={s.title} onClick={() => selectSuggestion(s.prompt)}>{s.title}</button>)}</div>
+            <button type="button" className="question-tip" onClick={() => setModal("guide")}>質問のコツ<ChevronRight size={15} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
             {messages.map((message, index) => <div className={`message message-${message.role}${index === messages.length - 1 && message.role === "assistant" ? " latest-answer" : ""}`} key={message.id} ref={index === messages.length - 1 && message.role === "assistant" ? latestAnswerRef : undefined}>
               {message.role === "assistant" && <div className="assistant-head"><Logo small /><strong>Linqs</strong><span>学習パートナー</span></div>}
