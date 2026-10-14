@@ -274,7 +274,7 @@ export default function LearningApp() {
   return <div className="app-shell">
     {mobileOpen && <button className="mobile-overlay" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="メインメニュー">
-      <div className="sidebar-brand"><Logo /><span className="brand-caption">AI・VBAの学習パートナー</span><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
+      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><span className="brand-caption">AI・VBAの学習パートナー</span><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
       <button className="new-chat" onClick={newChat} disabled={busy}><Plus size={19} />新しい質問</button>
       <nav className="main-nav">
         <button className={view === "chat" ? "active" : ""} onClick={() => nav("chat")} disabled={busy}><MessageCircle size={19} />AIに質問<span className="nav-active-dot" /></button>
