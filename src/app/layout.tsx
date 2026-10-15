@@ -3,8 +3,8 @@ import "katex/dist/katex.min.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Linqs | AI・VBAの学習パートナー",
-  description: "職業訓練校のAI活用・Excel VBA学習を支える質問チャット。基礎から実務まで、ヒントと段階的な解説でサポートします。",
+  title: "Linqs | LinktoLinkの教科書から回答",
+  description: "LinktoLinkの教科書をもとに、学習の疑問に回答する質問チャットです。",
   robots: { index: false, follow: false },
 };
 
