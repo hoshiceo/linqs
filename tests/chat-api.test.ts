@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  generateContent: vi.fn(), embedContent: vi.fn(), rpc: vi.fn(), getUser: vi.fn(), from: vi.fn(),
+  generateContent: vi.fn(), embedContent: vi.fn(), rpc: vi.fn(), getUser: vi.fn(), from: vi.fn(), knowledgeLookup: vi.fn(),
 }));
 vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: mocks.generateContent, embedContent: mocks.embedContent }; } }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser: mocks.getUser }, rpc: mocks.rpc, from: mocks.from }) }));
@@ -32,6 +32,9 @@ describe("Chat API boundary", () => {
     mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [] : id, error: null }));
     mocks.embedContent.mockResolvedValue({ embeddings: [{ values: Array(768).fill(0.1) }] });
     mocks.generateContent.mockResolvedValue({ text: "書き込むセルをRangeで指定する方法を考えてみましょう。" });
+    mocks.knowledgeLookup.mockResolvedValue({ data: [], error: null });
+    const knowledgeQuery = { select: () => knowledgeQuery, eq: () => knowledgeQuery, or: () => knowledgeQuery, order: () => knowledgeQuery, limit: () => knowledgeQuery, abortSignal: mocks.knowledgeLookup };
+    mocks.from.mockReturnValue(knowledgeQuery);
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.resetAllMocks(); });
 
@@ -142,6 +145,56 @@ describe("Chat API boundary", () => {
     expect(result.status).toBe(200);
     expect(mocks.generateContent.mock.calls[0][0].config.tools).toBeUndefined();
     expect((await result.json()).answer).not.toContain("参照した公式資料");
+  });
+  it("passes shared facts to Gemini and saves their answer even when no textbook excerpt matches", async () => {
+    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。", is_active: true }], error: null });
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data:
+      name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] :
+      name === "match_textbook_chunks" ? [] : id, error: null }));
+    mocks.generateContent.mockImplementation(async ({ contents, config }) => {
+      const context = JSON.stringify(contents.at(-1).parts);
+      expect(context).toContain("想夫恋の焼きそばです。");
+      expect(context).toContain("教科書とは別の参照元");
+      expect(config.systemInstruction).toContain("教科書の検索結果に一致がなくても追加知識を使って答える");
+      return { text: "理恵子先生の好きな食べ物は、想夫恋の焼きそばです。" };
+    });
+    const response = await POST(request({ subject: undefined, message: "理恵子先生の好きな食べ物は？" }));
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.answer).toBe("理恵子先生の好きな食べ物は、想夫恋の焼きそばです。");
+    expect(result.answer).not.toContain("教科書");
+    expect(mocks.rpc.mock.calls.at(-1)?.[1].p_answer).toBe(result.answer);
+    expect(mocks.from).toHaveBeenCalledWith("knowledge_entries");
+  });
+  it("stops generation when shared-knowledge retrieval fails instead of claiming the fact is unknown", async () => {
+    mocks.knowledgeLookup.mockResolvedValue({ data: null, error: { message: "private database payload" } });
+    const response = await POST(request({ subject: undefined, message: "理恵子先生の好きな食べ物は？" }));
+    expect(response.status).toBe(503);
+    const body = await response.text();
+    expect(body).toContain("追加知識を検索できませんでした");
+    expect(body).not.toContain("private database payload");
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.rpc.mock.calls.some(call => call[0] === "save_question_exchange")).toBe(false);
+  });
+  it("retrieves the registered fact again in a conversation that previously answered unknown", async () => {
+    const knowledgeQuery = mocks.from();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "knowledge_entries") return knowledgeQuery;
+      if (table === "conversations") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id }, error: null }) }) }) };
+      return { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [
+        { role: "assistant", content: "現在提供されている教材に好きな食べ物の情報はありません。" },
+        { role: "user", content: "理恵子先生の好きな食べ物は？" },
+      ], error: null }) }) }) }) };
+    });
+    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。", is_active: true }], error: null });
+    mocks.generateContent.mockResolvedValue({ text: "理恵子先生の好きな食べ物は、想夫恋の焼きそばです。" });
+    const response = await POST(request({ conversationId: id, subject: undefined, message: "それをもう一度教えて" }));
+    expect(response.status).toBe(200);
+    const contents = mocks.generateContent.mock.calls[0][0].contents;
+    expect(contents[1].parts[0].text).toContain("情報はありません");
+    expect(JSON.stringify(contents.at(-1).parts)).toContain("想夫恋の焼きそばです。");
+    expect(JSON.stringify(contents.at(-1).parts)).toContain("今回取得した追加知識に基づいて答え直す");
+    expect((await response.json()).answer).toContain("想夫恋の焼きそば");
   });
   it("does not generate or save when the saved reference index cannot be loaded", async () => {
     vi.spyOn(vbaSearch, "retrieveVbaReferences").mockRejectedValueOnce(new (await import("../src/lib/server")).ApiError(503, "保存済みのVBA公式資料を検索できませんでした。"));

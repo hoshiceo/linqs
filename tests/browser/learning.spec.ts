@@ -19,6 +19,19 @@ async function login(page: Page, options?: Parameters<typeof mockClassApi>[1]) {
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
 }
 
+test("a shared knowledge answer appears in chat and remains in saved history", async ({ page }) => {
+  const answer = "理恵子先生の好きな食べ物は、想夫恋の焼きそばです。";
+  await login(page, { answerText: answer });
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("理恵子先生の好きな食べ物は？");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toHaveText(answer);
+  await expect(page.locator(".markdown")).not.toContainText("教科書");
+  await page.screenshot({ path: `test-results/shared-knowledge-${test.info().project.name}.png` });
+  await navigate(page, "質問の履歴");
+  await page.getByRole("button", { name: /理恵子先生の好きな食べ物は？.*1回の質問/ }).click();
+  await expect(page.locator(".markdown")).toHaveText(answer);
+});
+
 test("a restored session waits for account verification but can ask before history arrives", async ({ page }) => {
   const previous = { id: "44444444-4444-4444-8444-444444444444", title: "以前の質問", subject: "すべて" as const, bookmarked: false, created_at: "2026-10-12T00:00:00Z", updated_at: "2026-10-12T00:00:00Z", messages: [] };
   await login(page, { initialConversations: [previous] });
