@@ -3,7 +3,7 @@ import type { Page, Route } from "@playwright/test";
 import type { Conversation } from "../../src/lib/types";
 
 // Network fixtures only: production code always requires the real class account.
-export async function mockClassApi(page: Page, { configured = true, answerSuffix = "", initialConversations = [] }: { configured?: boolean; answerSuffix?: string; initialConversations?: Conversation[] } = {}) {
+export async function mockClassApi(page: Page, { configured = true, answerSuffix = "", answerText, initialConversations = [] }: { configured?: boolean; answerSuffix?: string; answerText?: string; initialConversations?: Conversation[] } = {}) {
   // Functional checks use fallback fonts so the font CDN cannot block navigation.
   await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
   await page.route("https://fonts.gstatic.com/**", route => route.abort());
@@ -55,9 +55,9 @@ export async function mockClassApi(page: Page, { configured = true, answerSuffix
     if (url.pathname === "/api/chat" && method === "POST") {
       const body = request.postDataJSON();
       const now = new Date().toISOString();
-      const answer = (body.mode === "hint"
+      const answer = (answerText ?? (body.mode === "hint"
         ? "### まずはヒント\n対象のシートとセルを指定する方法を考えてみましょう。"
-        : "### セルに文字を入力\n```vba\nOption Explicit\nSub Greeting()\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"こんにちは\"\nEnd Sub\n```") + answerSuffix;
+        : "### セルに文字を入力\n```vba\nOption Explicit\nSub Greeting()\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"こんにちは\"\nEnd Sub\n```")) + answerSuffix;
       const previous = conversations.find(c => c.id === body.conversationId);
       const conversation: Conversation = { id: previous?.id || randomUUID(), title: previous?.title || body.message, subject: "すべて", bookmarked: previous?.bookmarked || false, created_at: previous?.created_at || now, updated_at: now, messages: [...(previous?.messages || []), { id: randomUUID(), role: "user", content: body.message, created_at: now }, { id: randomUUID(), role: "assistant", content: answer, created_at: now }] };
       conversations = [conversation, ...conversations.filter(c => c.id !== conversation.id)];
