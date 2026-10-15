@@ -16,7 +16,8 @@ export async function mockClassApi(page: Page, { configured = true, answerSuffix
   const json = (route: Route, body: object, status = 200) => route.fulfill({ status, json: body });
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
 
-  await page.route("https://linqs-test.supabase.co/auth/v1/**", async route => {
+  // Intercept authentication for local settings too; fixtures never contact Supabase.
+  await page.route("**/auth/v1/**", async route => {
     const request = route.request();
     const url = new URL(request.url());
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
