@@ -158,6 +158,7 @@ describe("Chat API boundary", () => {
     expect((await result.json()).answer).not.toContain("### 参照した公式資料");
   });
   it("passes retrieved textbook excerpts to Gemini and persists their page citations", async () => {
+    mocks.generateContent.mockResolvedValue({ text: "変数はDim文で宣言します。［教材1］" });
     mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data:
       name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] :
       name === "match_textbook_chunks" ? [{ id, filename: "Excel＿VBA.pdf", page: 21, content: "変数はDim文で宣言する。", extraction_method: "text", source_format: "pdf", similarity: 0.8 }] : id, error: null }));
@@ -168,6 +169,18 @@ describe("Chat API boundary", () => {
     expect(mocks.generateContent.mock.calls[0][0].contents.at(-1).parts.at(-1).text).toContain("変数はDim文で宣言する。");
     expect(body.answer).toContain("### 参照した教科書");
     expect(body.answer).toContain("PDF p.21");
+    expect(mocks.rpc.mock.calls.at(-1)?.[1].p_answer).toBe(body.answer);
+  });
+  it("saves the same cited-only, grouped textbook references that it returns", async () => {
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data:
+      name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] :
+      name === "match_textbook_chunks" ? [20, 21, 20].map((page, index) => ({ id: `33333333-3333-4333-8333-${String(index).padStart(12, "0")}`, filename: "Excel＿VBA.pdf", page, content: "セルはRangeで指定する。", extraction_method: "text", source_format: "pdf", similarity: 0.8 })) : id, error: null }));
+    mocks.generateContent.mockResolvedValue({ text: "セルはRangeで指定します。［教材1］値はValueで設定します。［教材3］" });
+    const result = await POST(request());
+    expect(result.status).toBe(200);
+    const body = await result.json();
+    expect(body.answer).toContain("- 教材1・教材3：Excel＿VBA.pdf — PDF p.20");
+    expect(body.answer).not.toContain("PDF p.21");
     expect(mocks.rpc.mock.calls.at(-1)?.[1].p_answer).toBe(body.answer);
   });
   it("does not call Gemini or save a fake textbook answer when textbook lookup fails", async () => {

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockClassApi } from "./class-api";
 import { retrieveVbaReferences } from "../../src/lib/vba-search";
 import { appendVbaReferences } from "../../src/lib/vba-reference";
+import { appendTextbookReferences } from "../../src/lib/textbooks";
 
 async function navigate(page: Page, label: string) {
   const menu = page.getByRole("button", { name: "メニューを開く" });
@@ -17,6 +18,168 @@ async function login(page: Page, options?: Parameters<typeof mockClassApi>[1]) {
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
 }
+
+test("a restored session waits for account verification but can ask before history arrives", async ({ page }) => {
+  const previous = { id: "44444444-4444-4444-8444-444444444444", title: "以前の質問", subject: "すべて" as const, bookmarked: false, created_at: "2026-10-12T00:00:00Z", updated_at: "2026-10-12T00:00:00Z", messages: [] };
+  await login(page, { initialConversations: [previous] });
+  await expect(page.locator(".recent-item")).toHaveCount(1);
+  let releaseAccount!: () => void;
+  const accountWaiting = new Promise<void>(resolve => { releaseAccount = resolve; });
+  let releaseHistory!: () => void;
+  const historyWaiting = new Promise<void>(resolve => { releaseHistory = resolve; });
+  let historyRequested = false;
+  await page.route("**/api/account", async route => {
+    await accountWaiting;
+    await route.fulfill({ json: { displayName: "クラス共通" } });
+  });
+  await page.route("**/api/conversations", async route => {
+    historyRequested = true;
+    await historyWaiting;
+    await route.fulfill({ json: { conversations: [previous] } });
+  });
+  try {
+    await page.reload();
+    await expect(page.getByText("学習スペースを準備しています…", { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveCount(0);
+    expect(historyRequested).toBe(false);
+    releaseAccount();
+    await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+    await expect.poll(() => historyRequested).toBe(true);
+    await navigate(page, "質問の履歴");
+    await expect(page.getByRole("heading", { name: "履歴を読み込んでいます…" })).toBeVisible();
+    await expect(page.getByText("まだ質問はありません", { exact: true })).toHaveCount(0);
+    if (await page.getByRole("button", { name: "メニューを開く" }).isVisible()) {
+      await expect.poll(() => page.locator(".sidebar").evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+    }
+    await page.screenshot({ path: `test-results/background-history-${test.info().project.name}.png` });
+    await navigate(page, "AIに質問");
+    await page.getByRole("textbox", { name: "質問を入力" }).fill("履歴の読み込み中の質問");
+    await page.getByRole("button", { name: "質問を送信" }).click();
+    await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
+    releaseHistory();
+    await expect(page.locator(".recent-item")).toHaveCount(2);
+    await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
+    await navigate(page, "質問の履歴");
+    await expect(page.locator(".history-card")).toHaveCount(2);
+    await page.getByRole("button", { name: /履歴の読み込み中の質問.*1回の質問/ }).click();
+    await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
+  } finally { releaseAccount(); releaseHistory(); }
+});
+
+test("a rejected restored account cannot open the learning space or fetch history", async ({ page }) => {
+  await login(page);
+  await expect(page.locator(".recent-empty")).toContainText("ここに質問が並びます");
+  const historyRequests: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/conversations")) historyRequests.push(request.url()); });
+  await page.route("**/api/account", route => route.fulfill({ status: 403, json: { error: "このクラスの共通アカウントでログインしてください。" } }));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "クラスにログイン" })).toBeVisible();
+  await expect(page.locator(".alert.error")).toContainText("このクラスの共通アカウントでログインしてください");
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveCount(0);
+  expect(historyRequests).toEqual([]);
+});
+
+test("stalled history times out and offers a retry while the question editor remains usable", async ({ page }) => {
+  await page.clock.install();
+  await mockClassApi(page);
+  let releaseHistory!: () => void;
+  const waiting = new Promise<void>(resolve => { releaseHistory = resolve; });
+  await page.route("**/api/conversations", async route => {
+    await waiting;
+    await route.fulfill({ json: { conversations: [] } });
+  });
+  try {
+    await page.goto("/");
+    await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+    await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+    await page.getByRole("button", { name: "ログイン", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeEnabled();
+    await navigate(page, "質問の履歴");
+    await expect(page.getByRole("heading", { name: "履歴を読み込んでいます…" })).toBeVisible();
+    await page.clock.fastForward(15001);
+    await expect(page.locator(".alert.error")).toContainText("履歴を読み込めませんでした");
+    await expect(page.getByRole("button", { name: "クラスの履歴を更新" })).toBeEnabled();
+    await navigate(page, "AIに質問");
+    await page.getByRole("textbox", { name: "質問を入力" }).fill("接続待ちが終わった後の質問");
+    await expect(page.getByRole("button", { name: "質問を送信" })).toBeEnabled();
+  } finally { releaseHistory(); }
+});
+
+test("failed background history can be retried without blocking questions", async ({ page }) => {
+  await mockClassApi(page);
+  await page.route("**/api/conversations", route => route.fulfill({ status: 503, json: { error: "履歴を取得できませんでした。" } }));
+  await page.goto("/");
+  await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+  await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeEnabled();
+  await expect(page.locator(".alert.error")).toContainText("履歴を読み込めませんでした");
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("履歴の取得に失敗しても質問する");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
+  await page.unroute("**/api/conversations");
+  await navigate(page, "質問の履歴");
+  await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
+  await expect(page.getByRole("button", { name: "クラスの履歴を更新" })).toBeEnabled();
+  await expect(page.locator(".history-card")).toHaveCount(1);
+  await expect(page.locator(".alert.error")).toHaveCount(0);
+});
+
+test("logging out cancels background history before another login", async ({ page }) => {
+  await login(page);
+  await expect(page.locator(".recent-empty")).toContainText("ここに質問が並びます");
+  let releaseHistory!: () => void;
+  const waiting = new Promise<void>(resolve => { releaseHistory = resolve; });
+  const requests: string[] = [];
+  page.on("requestfailed", request => { if (request.url().includes("/api/conversations")) requests.push(request.url()); });
+  await page.route("**/api/conversations", async route => {
+    await waiting;
+    await route.fulfill({ json: { conversations: [] } });
+  });
+  try {
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+    const menu = page.getByRole("button", { name: "メニューを開く" });
+    if (await menu.isVisible()) await menu.click();
+    await page.getByRole("button", { name: "クラス共通" }).click();
+    await page.getByRole("button", { name: "この端末からログアウト" }).click();
+    await expect(page.getByRole("heading", { name: "クラスにログイン" })).toBeVisible();
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    releaseHistory();
+    await page.unroute("**/api/conversations");
+    await page.getByLabel("メールアドレス", { exact: true }).fill("class@example.com");
+    await page.getByLabel("パスワード", { exact: true }).fill("test-password");
+    await page.getByRole("button", { name: "ログイン", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+    await expect(page.locator(".recent-empty")).toContainText("ここに質問が並びます");
+    await expect(page.locator(".alert.error")).toHaveCount(0);
+  } finally { releaseHistory(); }
+});
+
+test("a delayed history refresh cannot restore a question deleted while it was loading", async ({ page }) => {
+  const previous = { id: "44444444-4444-4444-8444-444444444444", title: "更新中に削除する質問", subject: "すべて" as const, bookmarked: false, created_at: "2026-10-12T00:00:00Z", updated_at: "2026-10-12T00:00:00Z", messages: [] };
+  await login(page, { initialConversations: [previous] });
+  await navigate(page, "質問の履歴");
+  await expect(page.locator(".history-card")).toHaveCount(1);
+  let releaseHistory!: () => void;
+  const waiting = new Promise<void>(resolve => { releaseHistory = resolve; });
+  await page.route("**/api/conversations", async route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await waiting;
+    await route.fulfill({ json: { conversations: [previous] } });
+  });
+  try {
+    await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
+    await expect(page.getByRole("button", { name: "更新しています…" })).toBeDisabled();
+    await page.getByRole("button", { name: "この質問を削除" }).click();
+    await page.getByRole("button", { name: "削除する", exact: true }).click();
+    await expect(page.locator(".history-card")).toHaveCount(0);
+    releaseHistory();
+    await expect(page.getByRole("button", { name: "クラスの履歴を更新" })).toBeEnabled();
+    await expect(page.locator(".history-card")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "まだ質問はありません" })).toBeVisible();
+  } finally { releaseHistory(); }
+});
 
 test("a student can ask, save, find, reopen and delete a question", async ({ page }) => {
   const sharedBookmarkRequests: string[] = [];
@@ -228,6 +391,27 @@ test("an incorrect class password does not open the learning space", async ({ pa
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "ログインできませんでした" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveCount(0);
+});
+
+test("only cited textbook pages appear once in answers and reopened history", async ({ page }) => {
+  const answer = appendTextbookReferences("\n\nセルはRangeで指定します。［教材1］値はValueで設定します。［教材3］", {
+    status: "matched",
+    chunks: [20, 21, 20, 22, 23, 24].map((pageNumber, index) => ({ id: `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`, filename: "Excel＿VBA.pdf", page: pageNumber, content: "セルはRangeで指定し、Valueで値を設定します。", extraction_method: "text", source_format: "pdf", similarity: 0.8 })),
+  });
+  await login(page, { answerSuffix: answer });
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("教科書のセル入力を説明して");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  const references = page.locator(".markdown ul li");
+  await expect(page.locator(".markdown").getByRole("heading", { name: "参照した教科書", exact: true })).toBeVisible();
+  await expect(references).toHaveCount(1);
+  await expect(references).toHaveText("教材1・教材3：Excel＿VBA.pdf — PDF p.20");
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+  await navigate(page, "質問の履歴");
+  await expect(page.locator(".history-card")).toHaveCount(1);
+  await page.locator(".history-open").click();
+  await expect(references).toHaveCount(1);
+  await expect(references).toHaveText("教材1・教材3：Excel＿VBA.pdf — PDF p.20");
 });
 
 test("saved official reference excerpts retain their citations in answers and reopened history", async ({ page }) => {

@@ -16,6 +16,7 @@ import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggle
 
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
+const CONNECTION_TIMEOUT_MS = 15000;
 type View = "chat" | "history" | "bookmarks";
 
 function Markdown({ content }: { content: string }) {
@@ -44,6 +45,7 @@ export default function LearningApp() {
   const [classSignedIn, setClassSignedIn] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const [answerJump, setAnswerJump] = useState<"start" | "end" | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,7 @@ export default function LearningApp() {
   const pendingQuestionRef = useRef<HTMLDivElement>(null);
   const readingEarlierRef = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const historyChangesRef = useRef(new Map<string, Conversation | null>());
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
   const savedIds = new Set(bookmarkIds);
@@ -74,7 +77,7 @@ export default function LearningApp() {
           const preference = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
           if (["explain", "hint"].includes(preference.mode)) setMode(preference.mode);
         } catch { /* Defaults remain usable when browser storage is unavailable. */ }
-        const response = await fetch("/api/config", { cache: "no-store" });
+        const response = await fetch("/api/config", { cache: "no-store", signal: AbortSignal.timeout(CONNECTION_TIMEOUT_MS) });
         if (!response.ok) throw new Error("接続状態を確認できませんでした。ページを再読み込みしてください。");
         const settings: AppConfig = await response.json();
         if (!alive) return;
@@ -83,28 +86,59 @@ export default function LearningApp() {
           const { data, error } = await getSupabase().auth.getSession();
           if (error) throw new Error("ログイン状態を確認できませんでした。");
           if (!data.session || data.session.user.is_anonymous) return;
-          await apiFetch("/api/account");
+          await apiFetch("/api/account", { signal: AbortSignal.timeout(CONNECTION_TIMEOUT_MS) });
           if (!alive) return;
           setClassSignedIn(true);
-          const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-          if (alive) applyHistory(result.conversations);
         } else {
           setLoginError("クラスアカウントの接続設定が途中です。管理者に設定をご確認ください。");
         }
-      } catch (e) { if (alive) { const message = e instanceof Error ? e.message : "接続できませんでした。"; setError(message); setLoginError(message); } }
+      } catch (e) {
+        if (alive) {
+          const message = e instanceof Error && e.name === "TimeoutError"
+            ? "接続の確認に時間がかかっています。ページを再読み込みしてください。"
+            : e instanceof Error ? e.message : "接続できませんでした。";
+          setError(message); setLoginError(message);
+        }
+      }
       finally { if (alive) setLoaded(true); }
     }
     void initialize();
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    if (!classSignedIn) return;
+    let alive = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONNECTION_TIMEOUT_MS);
+    // Preserve questions answered or deleted while this snapshot is in flight.
+    const changes = new Map<string, Conversation | null>();
+    historyChangesRef.current = changes;
+    setRefreshing(true);
+    async function loadHistory() {
+      try {
+        const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations", { signal: controller.signal });
+        if (!alive) return;
+        const history = new Map(result.conversations.map(c => [c.id, c]));
+        for (const [id, conversation] of changes) {
+          if (conversation) history.set(id, conversation);
+          else history.delete(id);
+        }
+        applyHistory([...history.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+      } catch {
+        if (alive) setError("履歴を読み込めませんでした。「質問の履歴」から再度更新してください。");
+      } finally {
+        clearTimeout(timeout);
+        if (alive) setRefreshing(false);
+      }
+    }
+    void loadHistory();
+    return () => { alive = false; clearTimeout(timeout); controller.abort(); };
+  }, [classSignedIn, historyRefresh]);
+
   async function login(email: string, password: string) {
     await signInClassAccount(email, password);
     setLoginError(""); setError(""); setClassSignedIn(true);
-    try {
-      const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-      applyHistory(result.conversations);
-    } catch (e) { setError(e instanceof Error ? e.message : "履歴を取得できませんでした。"); }
   }
 
   async function logout() {
@@ -113,18 +147,16 @@ export default function LearningApp() {
       await signOutClassAccount();
       setClassSignedIn(false); setActiveId(null);
       setConversations([]);
+      setRefreshing(false); setBookmarksReady(false);
       setInput(""); setView("chat"); setModal(null); setMobileOpen(false); setError(""); setWarning("");
     } catch (e) { setError(e instanceof Error ? e.message : "ログアウトできませんでした。"); }
   }
 
-  async function refreshHistory() {
+  function refreshHistory() {
     if (busy || refreshing) return;
     setRefreshing(true);
-    try {
-      const result = await apiFetch<{ conversations: Conversation[] }>("/api/conversations");
-      applyHistory(result.conversations); setError("");
-    } catch (e) { setError(e instanceof Error ? e.message : "履歴を更新できませんでした。"); }
-    finally { setRefreshing(false); }
+    setError("");
+    setHistoryRefresh(current => current + 1);
   }
 
   useEffect(() => {
@@ -214,6 +246,7 @@ export default function LearningApp() {
       const now = new Date().toISOString();
       const exchange: Message[] = [{ id: crypto.randomUUID(), role: "user", content: question, created_at: now }, { id: crypto.randomUUID(), role: "assistant", content: answer, created_at: new Date(Date.now() + 1).toISOString() }];
       const conversation: Conversation = { id, title: active?.title || question.slice(0, 50), subject: "すべて", bookmarked: active?.bookmarked || false, created_at: active?.created_at || now, updated_at: now, messages: [...previousMessages, ...exchange], persisted: saved };
+      historyChangesRef.current.set(id, conversation);
       setConversations(current => [conversation, ...current.filter(c => c.id !== previousId && c.id !== id)]);
       setActiveId(id);
       if (!saved) {
@@ -247,6 +280,7 @@ export default function LearningApp() {
     if (!deleteId) return;
     try {
       if (conversations.find(c => c.id === deleteId)?.persisted !== false) await apiFetch(`/api/conversations?id=${deleteId}`, { method: "DELETE" });
+      historyChangesRef.current.set(deleteId, null);
       setConversations(current => current.filter(c => c.id !== deleteId));
       try { setBookmarkIds(removeDeviceBookmark(localStorage, deleteId)); }
       catch { setWarning("質問は削除しましたが、このブラウザの保存マークを更新できませんでした。"); }
@@ -280,7 +314,7 @@ export default function LearningApp() {
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => nav("bookmarks")} disabled={busy}><Bookmark size={19} />保存した質問</button>
       </nav>
       <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
-        {conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.slice(0, 5).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.slice(0, 5).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
@@ -327,7 +361,7 @@ export default function LearningApp() {
         </div>
       </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "このブラウザに保存した質問です。保存・解除はほかの端末に影響しません。"}</p>{view === "history" && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
         {error && <div className="alert error" role="alert">{error}</div>}{warning && <div className="alert warning" role="status">{warning}</div>}
-        {filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${savedIds.has(c.id) ? "is-saved" : ""}`} aria-label={savedIds.has(c.id) ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)} disabled={!bookmarksReady}><Bookmark size={18} fill={savedIds.has(c.id) ? "currentColor" : "none"} /></button>{view === "history" && <button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button>}</div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
+        {refreshing && filtered.length === 0 ? <div className="library-empty" role="status"><History size={36} strokeWidth={1.4} /><h2>履歴を読み込んでいます…</h2><p>{config?.mode === "live" ? "新しい質問は、読み込み中も送信できます。" : "読み込みが終わると、クラスの質問が表示されます。"}</p></div> : filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${savedIds.has(c.id) ? "is-saved" : ""}`} aria-label={savedIds.has(c.id) ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)} disabled={!bookmarksReady}><Bookmark size={18} fill={savedIds.has(c.id) ? "currentColor" : "none"} /></button>{view === "history" && <button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button>}</div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
       </div>}
     </main>
 
