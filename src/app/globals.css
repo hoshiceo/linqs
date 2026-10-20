@@ -36,6 +36,8 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .recent-item svg { flex-shrink: 0; color: #9aa59f; }
 .recent-item span { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .recent-item:hover, .recent-item.selected { color: var(--green); }
+.recent-more { width: 100%; border: 0; background: transparent; color: #87958a; font-size: 11px; padding: 9px 0 12px; text-align: center; cursor: pointer; transition: color .16s; }
+.recent-more:hover { color: var(--green); }
 .sidebar-bottom { margin-top: auto; padding-top: 20px; }
 .help-link { margin-top: 19px; display: flex; align-items: center; gap: 9px; padding: 9px 5px; width: 100%; background: none; border: 0; font-size: 12px; color: #819086; }
 .help-link svg:last-child { margin-left: auto; }

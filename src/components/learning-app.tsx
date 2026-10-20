@@ -18,6 +18,8 @@ import { useVoiceInput } from "@/hooks/use-voice-input";
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
 const CONNECTION_TIMEOUT_MS = 15000;
+const INITIAL_RECENT_COUNT = 15;
+const RECENT_STEP = 10;
 type View = "chat" | "history" | "bookmarks";
 
 function Markdown({ content }: { content: string }) {
@@ -48,6 +50,7 @@ export default function LearningApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [answerJump, setAnswerJump] = useState<"start" | "end" | null>(null);
+  const [recentLimit, setRecentLimit] = useState(INITIAL_RECENT_COUNT);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const latestAnswerRef = useRef<HTMLDivElement>(null);
@@ -76,12 +79,20 @@ export default function LearningApp() {
 
   function applyHistory(history: Conversation[]) {
     setConversations(history);
+    setRecentLimit(INITIAL_RECENT_COUNT);
     try {
       setBookmarkIds(loadDeviceBookmarks(localStorage, history.filter(c => c.bookmarked).map(c => c.id)));
       setBookmarksReady(true);
     } catch {
       setBookmarksReady(false);
       setWarning("このブラウザの保存した質問を読み込めませんでした。ブラウザの保存設定をご確認ください。");
+    }
+  }
+
+  function handleRecentScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+      setRecentLimit(prev => (prev < conversations.length ? prev + RECENT_STEP : prev));
     }
   }
 
@@ -330,8 +341,11 @@ export default function LearningApp() {
         <button className={view === "history" ? "active" : ""} onClick={() => nav("history")} disabled={busy}><History size={19} />質問の履歴{conversations.length > 0 && <span className="nav-count">{conversations.length}</span>}</button>
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => nav("bookmarks")} disabled={busy}><Bookmark size={19} />保存した質問</button>
       </nav>
-      <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
-        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+      <div className="recent-area" onScroll={handleRecentScroll}><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
+        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : <>
+          {conversations.slice(0, recentLimit).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+          {recentLimit < conversations.length && <button type="button" className="recent-more" onClick={() => setRecentLimit(prev => Math.min(conversations.length, prev + RECENT_STEP))}>さらに読み込む（残り{conversations.length - recentLimit}件）</button>}
+        </>}
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
