@@ -167,17 +167,17 @@ export function useVoiceInput({
           case "not-allowed":
           case "service-not-allowed":
             onErrorRef.current?.(
-              "マイクまたは音声認識へのアクセスが許可されていません。ブラウザのアドレスバーおよび Macの「システム設定 > プライバシーとセキュリティ > マイク」でブラウザが許可されているかご確認ください。"
+              `マイクまたは音声認識へのアクセスが許可されていません [${event.error}]。ブラウザのアドレスバーの許可、およびMacの「システム設定 > プライバシーとセキュリティ」内の「マイク」と「音声認識」をご確認ください。`
             );
             break;
           case "audio-capture":
-            onErrorRef.current?.("マイクの音声を検出できませんでした。マイクの接続やMacの入力音量設定をご確認ください。");
+            onErrorRef.current?.("マイクの音声を検出できませんでした [audio-capture]。マイクの接続やMacの入力音量設定をご確認ください。");
             break;
           case "network":
-            onErrorRef.current?.("音声認識サービスとの通信に失敗しました。インターネット接続をご確認ください。");
+            onErrorRef.current?.("音声認識サービスとの通信に失敗しました [network]。インターネット接続やVPN設定をご確認ください。");
             break;
           default:
-            onErrorRef.current?.(`音声認識エラー: ${event.error}`);
+            onErrorRef.current?.(`音声認識エラー [${event.error}]`);
             break;
         }
       };
