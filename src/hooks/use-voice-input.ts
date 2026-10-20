@@ -24,10 +24,6 @@ interface SpeechRecognitionInstance extends EventTarget {
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
-  onaudiostart?: (() => void) | null;
-  onsoundstart?: (() => void) | null;
-  onspeechstart?: (() => void) | null;
-  onspeechend?: (() => void) | null;
 }
 
 interface SpeechRecognitionConstructor {
@@ -67,7 +63,6 @@ export function useVoiceInput({
   const [interim, setInterim] = useState("");
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const isExplicitStopRef = useRef(false);
   const onTranscriptRef = useRef(onTranscript);
   const onErrorRef = useRef(onError);
 
@@ -79,11 +74,10 @@ export function useVoiceInput({
   }, []);
 
   const cancel = useCallback(() => {
-    isExplicitStopRef.current = true;
     try {
       recognitionRef.current?.abort();
     } catch {
-      // Ignore abort errors
+      // Ignore
     }
     recognitionRef.current = null;
     setIsStarting(false);
@@ -92,7 +86,6 @@ export function useVoiceInput({
   }, []);
 
   const stop = useCallback(() => {
-    isExplicitStopRef.current = true;
     try {
       recognitionRef.current?.stop();
     } catch {
@@ -100,7 +93,7 @@ export function useVoiceInput({
     }
   }, [cancel]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(() => {
     if (typeof window !== "undefined" && window.isSecureContext === false) {
       onErrorRef.current?.("音声入力は安全な接続（HTTPS または localhost）でのみ利用できます。");
       return;
@@ -112,31 +105,8 @@ export function useVoiceInput({
       return;
     }
 
-    // Set starting state immediately so UI responds right away
     setIsStarting(true);
     setInterim("");
-    isExplicitStopRef.current = false;
-
-    // First request microphone permission explicitly if mediaDevices API is available.
-    // This provides a reliable browser permission prompt and descriptive errors.
-    if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Immediately stop all audio tracks; SpeechRecognition manages its own capture.
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err) {
-        setIsStarting(false);
-        const errName = err instanceof Error ? err.name : "";
-        if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
-          onErrorRef.current?.("マイクへのアクセスが許可されていません。ブラウザのアドレスバー等でマイクを許可してください。");
-        } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
-          onErrorRef.current?.("マイクが見つかりませんでした。マイクが接続されているか確認してください。");
-        } else {
-          onErrorRef.current?.("マイクの起動に失敗しました。ブラウザの設定をご確認ください。");
-        }
-        return;
-      }
-    }
 
     try {
       recognitionRef.current?.abort();
@@ -147,8 +117,6 @@ export function useVoiceInput({
     try {
       const recognition = new Ctor();
       recognition.lang = lang;
-      // Note: Some WebKit/Safari versions have issues with continuous=true, but setting
-      // continuous=true allows natural speech flow in Chromium.
       recognition.continuous = true;
       recognition.interimResults = true;
       recognitionRef.current = recognition;
@@ -182,12 +150,12 @@ export function useVoiceInput({
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.warn("SpeechRecognition error:", event.error);
+
         if (event.error === "aborted") {
-          // Normal cancellation
           return;
         }
         if (event.error === "no-speech") {
-          // Silence from user
           return;
         }
 
@@ -198,13 +166,15 @@ export function useVoiceInput({
         switch (event.error) {
           case "not-allowed":
           case "service-not-allowed":
-            onErrorRef.current?.("マイクへのアクセスまたは音声認識サービスが許可されていません。ブラウザの設定をご確認ください。");
+            onErrorRef.current?.(
+              "マイクまたは音声認識へのアクセスが許可されていません。ブラウザのアドレスバーおよび Macの「システム設定 > プライバシーとセキュリティ > マイク」でブラウザが許可されているかご確認ください。"
+            );
             break;
           case "audio-capture":
-            onErrorRef.current?.("マイクの音声を検出できませんでした。マイクの接続をご確認ください。");
+            onErrorRef.current?.("マイクの音声を検出できませんでした。マイクの接続やMacの入力音量設定をご確認ください。");
             break;
           case "network":
-            onErrorRef.current?.("音声認識サービスとの通信に失敗しました。ネットワーク接続をご確認ください。");
+            onErrorRef.current?.("音声認識サービスとの通信に失敗しました。インターネット接続をご確認ください。");
             break;
           default:
             onErrorRef.current?.(`音声認識エラー: ${event.error}`);
@@ -223,9 +193,10 @@ export function useVoiceInput({
     } catch (err) {
       setIsStarting(false);
       setListening(false);
+      console.error("SpeechRecognition start exception:", err);
       onErrorRef.current?.(
         err instanceof Error
-          ? `音声認識を開始できませんでした: ${err.message}`
+          ? `音声認識を開始できませんでした (${err.message})`
           : "音声認識を開始できませんでした。"
       );
     }
@@ -235,7 +206,7 @@ export function useVoiceInput({
     if (listening || isStarting) {
       stop();
     } else {
-      void start();
+      start();
     }
   }, [listening, isStarting, start, stop]);
 
