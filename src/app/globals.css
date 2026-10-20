@@ -186,8 +186,10 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 /* Voice input */
 .voice-button { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: #87958a; transition: background .16s, color .16s, box-shadow .16s; }
 .voice-button:hover { background: #f0f5ef; color: var(--green); }
+.voice-button.is-starting { background: #fef9ee; color: #d97706; animation: voice-pulse-starting 1.2s ease-in-out infinite; }
 .voice-button.is-listening { background: #fef2f2; color: #dc2626; animation: voice-pulse 1.5s ease-in-out infinite; }
 .voice-button:disabled { color: #c3cbc5; }
+@keyframes voice-pulse-starting { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
 @keyframes voice-pulse { 0%, 100% { box-shadow: 0 0 0 0 #dc262630; } 50% { box-shadow: 0 0 0 6px #dc262600; } }
 .voice-interim { display: flex; align-items: center; gap: 7px; padding: 4px 10px 6px; font-size: 12px; color: #dc2626; line-height: 1.7; }
 .voice-interim svg { flex-shrink: 0; animation: voice-pulse-icon 1s ease-in-out infinite; }

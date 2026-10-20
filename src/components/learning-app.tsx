@@ -59,9 +59,15 @@ export default function LearningApp() {
     lang: "ja-JP",
     onTranscript: (text) => {
       setInput((prev) => {
-        const separator = prev && !prev.endsWith("\n") && !prev.endsWith(" ") ? " " : "";
-        return prev + separator + text;
+        if (!prev) return text;
+        const lastChar = prev.slice(-1);
+        // Add a space only between ASCII word characters
+        const needsSpace = /[A-Za-z0-9]/.test(lastChar) && /^[A-Za-z0-9]/.test(text);
+        return prev + (needsSpace ? " " : "") + text;
       });
+    },
+    onError: (err) => {
+      setError(err);
     },
   });
   const active = conversations.find(c => c.id === activeId);
@@ -367,7 +373,7 @@ export default function LearningApp() {
           <form className="composer" onSubmit={send}>
             {voice.listening && voice.interim && <div className="voice-interim" aria-live="polite"><Mic size={14} /><span>{voice.interim}</span></div>}
             <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{voice.listening ? "音声入力中…" : input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span>{voice.supported && <button type="button" className={`voice-button${voice.listening ? " is-listening" : ""}`} aria-label={voice.listening ? "音声入力を停止" : "音声で入力"} onClick={voice.toggle} disabled={busy || active?.persisted === false || config?.mode === "incomplete"}>{voice.listening ? <MicOff size={18} /> : <Mic size={18} />}</button>}<button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
+            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{voice.isStarting ? "マイク起動中…" : voice.listening ? "音声入力中…" : input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span>{voice.supported && <button type="button" className={`voice-button${voice.listening ? " is-listening" : ""}${voice.isStarting ? " is-starting" : ""}`} aria-label={voice.listening ? "音声入力を停止" : "音声で入力"} onClick={(e) => { e.preventDefault(); voice.toggle(); }} disabled={busy || active?.persisted === false || config?.mode === "incomplete"}>{voice.listening ? <MicOff size={18} /> : <Mic size={18} />}</button>}<button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
           <div className="composer-footnote"><span>AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。</span><span className="powered"><Sparkles size={11} />{config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>

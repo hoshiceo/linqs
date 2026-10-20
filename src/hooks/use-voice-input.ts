@@ -2,11 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Browser SpeechRecognition types – only the subset this hook uses.
- * The Web Speech API is not yet in lib.dom.d.ts for all browsers,
- * so we declare just enough to compile without pulling in external type packages.
- */
 interface SpeechRecognitionEvent extends Event {
   readonly resultIndex: number;
   readonly results: SpeechRecognitionResultList;
@@ -14,12 +9,14 @@ interface SpeechRecognitionEvent extends Event {
 
 interface SpeechRecognitionErrorEvent extends Event {
   readonly error: string;
+  readonly message?: string;
 }
 
 interface SpeechRecognitionInstance extends EventTarget {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  maxAlternatives?: number;
   start(): void;
   stop(): void;
   abort(): void;
@@ -27,13 +24,16 @@ interface SpeechRecognitionInstance extends EventTarget {
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
+  onaudiostart?: (() => void) | null;
+  onsoundstart?: (() => void) | null;
+  onspeechstart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
 }
 
 interface SpeechRecognitionConstructor {
   new (): SpeechRecognitionInstance;
 }
 
-/** Return the browser SpeechRecognition constructor, or `null` if unavailable. */
 function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,131 +42,213 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
 }
 
 export interface UseVoiceInputOptions {
-  /** BCP-47 language tag. Defaults to `"ja-JP"`. */
   lang?: string;
-  /** Called with the finalised transcript text. */
   onTranscript: (text: string) => void;
+  onError?: (error: string) => void;
 }
 
 export interface UseVoiceInputReturn {
-  /** Whether the browser supports the Web Speech API. */
   supported: boolean;
-  /** Whether the recogniser is currently listening. */
   listening: boolean;
-  /** Interim (not-yet-finalised) transcript shown while the user speaks. */
+  isStarting: boolean;
   interim: string;
-  /** Toggle listening on/off. */
   toggle: () => void;
-  /** Stop listening without inserting the interim result. */
   cancel: () => void;
 }
 
-/**
- * Hook that wraps the Web Speech API for voice input.
- *
- * It returns a stable `toggle` callback to start/stop listening and an `interim`
- * string to show real-time transcription feedback. Once the browser finalises
- * the result the `onTranscript` callback is called with the complete text.
- *
- * The recogniser runs in `continuous` mode so the user can speak multiple
- * sentences in a single session.
- */
 export function useVoiceInput({
   lang = "ja-JP",
   onTranscript,
+  onError,
 }: UseVoiceInputOptions): UseVoiceInputReturn {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const [interim, setInterim] = useState("");
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const onTranscriptRef = useRef(onTranscript);
-  onTranscriptRef.current = onTranscript;
 
-  // Detect support on mount (client-only).
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const isExplicitStopRef = useRef(false);
+  const onTranscriptRef = useRef(onTranscript);
+  const onErrorRef = useRef(onError);
+
+  onTranscriptRef.current = onTranscript;
+  onErrorRef.current = onError;
+
   useEffect(() => {
     setSupported(getSpeechRecognition() !== null);
   }, []);
 
-  // Tear down on unmount.
-  useEffect(() => {
-    return () => {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-    };
-  }, []);
-
-  const stop = useCallback(() => {
-    recognitionRef.current?.stop();
-  }, []);
-
   const cancel = useCallback(() => {
-    recognitionRef.current?.abort();
+    isExplicitStopRef.current = true;
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // Ignore abort errors
+    }
     recognitionRef.current = null;
+    setIsStarting(false);
     setListening(false);
     setInterim("");
   }, []);
 
-  const start = useCallback(() => {
-    const Ctor = getSpeechRecognition();
-    if (!Ctor) return;
-
-    // Clean up any prior instance.
-    recognitionRef.current?.abort();
-
-    const recognition = new Ctor();
-    recognition.lang = lang;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognitionRef.current = recognition;
-
-    recognition.onstart = () => {
-      setListening(true);
-      setInterim("");
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalText = "";
-      let interimText = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalText += result[0].transcript;
-        } else {
-          interimText += result[0].transcript;
-        }
-      }
-      if (finalText) {
-        onTranscriptRef.current(finalText);
-        setInterim("");
-      } else {
-        setInterim(interimText);
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      // "aborted" is triggered by our own cancel() call – not an actual error.
-      if (event.error === "aborted") return;
-      // "no-speech" just means the user was silent; we can keep listening.
-      if (event.error === "no-speech") return;
+  const stop = useCallback(() => {
+    isExplicitStopRef.current = true;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
       cancel();
-    };
+    }
+  }, [cancel]);
 
-    recognition.onend = () => {
+  const start = useCallback(async () => {
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      onErrorRef.current?.("音声入力は安全な接続（HTTPS または localhost）でのみ利用できます。");
+      return;
+    }
+
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) {
+      onErrorRef.current?.("お使いのブラウザは音声入力に対応していません。Google Chrome、Microsoft Edge、Safari などをお試しください。");
+      return;
+    }
+
+    // Set starting state immediately so UI responds right away
+    setIsStarting(true);
+    setInterim("");
+    isExplicitStopRef.current = false;
+
+    // First request microphone permission explicitly if mediaDevices API is available.
+    // This provides a reliable browser permission prompt and descriptive errors.
+    if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately stop all audio tracks; SpeechRecognition manages its own capture.
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        setIsStarting(false);
+        const errName = err instanceof Error ? err.name : "";
+        if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+          onErrorRef.current?.("マイクへのアクセスが許可されていません。ブラウザのアドレスバー等でマイクを許可してください。");
+        } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
+          onErrorRef.current?.("マイクが見つかりませんでした。マイクが接続されているか確認してください。");
+        } else {
+          onErrorRef.current?.("マイクの起動に失敗しました。ブラウザの設定をご確認ください。");
+        }
+        return;
+      }
+    }
+
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // Ignore
+    }
+
+    try {
+      const recognition = new Ctor();
+      recognition.lang = lang;
+      // Note: Some WebKit/Safari versions have issues with continuous=true, but setting
+      // continuous=true allows natural speech flow in Chromium.
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognitionRef.current = recognition;
+
+      recognition.onstart = () => {
+        setIsStarting(false);
+        setListening(true);
+        setInterim("");
+      };
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let finalText = "";
+        let interimText = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript ?? "";
+          if (result.isFinal) {
+            finalText += transcript;
+          } else {
+            interimText += transcript;
+          }
+        }
+
+        if (finalText) {
+          onTranscriptRef.current(finalText);
+          setInterim("");
+        } else {
+          setInterim(interimText);
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (event.error === "aborted") {
+          // Normal cancellation
+          return;
+        }
+        if (event.error === "no-speech") {
+          // Silence from user
+          return;
+        }
+
+        setIsStarting(false);
+        setListening(false);
+        setInterim("");
+
+        switch (event.error) {
+          case "not-allowed":
+          case "service-not-allowed":
+            onErrorRef.current?.("マイクへのアクセスまたは音声認識サービスが許可されていません。ブラウザの設定をご確認ください。");
+            break;
+          case "audio-capture":
+            onErrorRef.current?.("マイクの音声を検出できませんでした。マイクの接続をご確認ください。");
+            break;
+          case "network":
+            onErrorRef.current?.("音声認識サービスとの通信に失敗しました。ネットワーク接続をご確認ください。");
+            break;
+          default:
+            onErrorRef.current?.(`音声認識エラー: ${event.error}`);
+            break;
+        }
+      };
+
+      recognition.onend = () => {
+        setIsStarting(false);
+        setListening(false);
+        setInterim("");
+        recognitionRef.current = null;
+      };
+
+      recognition.start();
+    } catch (err) {
+      setIsStarting(false);
       setListening(false);
-      setInterim("");
-      recognitionRef.current = null;
-    };
-
-    recognition.start();
-  }, [lang, cancel]);
+      onErrorRef.current?.(
+        err instanceof Error
+          ? `音声認識を開始できませんでした: ${err.message}`
+          : "音声認識を開始できませんでした。"
+      );
+    }
+  }, [lang]);
 
   const toggle = useCallback(() => {
-    if (listening) {
+    if (listening || isStarting) {
       stop();
     } else {
-      start();
+      void start();
     }
-  }, [listening, start, stop]);
+  }, [listening, isStarting, start, stop]);
 
-  return { supported, listening, interim, toggle, cancel };
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Ignore
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  return { supported, listening, isStarting, interim, toggle, cancel };
 }
