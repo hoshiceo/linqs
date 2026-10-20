@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDown, Bookmark, Check, ChevronRight, CircleHelp, Copy, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, Bookmark, Check, ChevronRight, CircleHelp, Copy, GraduationCap, History, Lightbulb, LogOut, Menu, Mic, MicOff, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -13,10 +13,13 @@ import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
 import type { AnswerMode, AppConfig, Conversation, Message } from "@/lib/types";
 import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggleDeviceBookmark } from "@/lib/device-bookmarks";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
 const CONNECTION_TIMEOUT_MS = 15000;
+const INITIAL_RECENT_COUNT = 15;
+const RECENT_STEP = 10;
 type View = "chat" | "history" | "bookmarks";
 
 function Markdown({ content }: { content: string }) {
@@ -47,6 +50,7 @@ export default function LearningApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [answerJump, setAnswerJump] = useState<"start" | "end" | null>(null);
+  const [recentLimit, setRecentLimit] = useState(INITIAL_RECENT_COUNT);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const latestAnswerRef = useRef<HTMLDivElement>(null);
@@ -54,18 +58,41 @@ export default function LearningApp() {
   const readingEarlierRef = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const historyChangesRef = useRef(new Map<string, Conversation | null>());
+  const voice = useVoiceInput({
+    lang: "ja-JP",
+    onTranscript: (text) => {
+      setInput((prev) => {
+        if (!prev) return text;
+        const lastChar = prev.slice(-1);
+        // Add a space only between ASCII word characters
+        const needsSpace = /[A-Za-z0-9]/.test(lastChar) && /^[A-Za-z0-9]/.test(text);
+        return prev + (needsSpace ? " " : "") + text;
+      });
+    },
+    onError: (err) => {
+      setError(err);
+    },
+  });
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
   const savedIds = new Set(bookmarkIds);
 
   function applyHistory(history: Conversation[]) {
     setConversations(history);
+    setRecentLimit(INITIAL_RECENT_COUNT);
     try {
       setBookmarkIds(loadDeviceBookmarks(localStorage, history.filter(c => c.bookmarked).map(c => c.id)));
       setBookmarksReady(true);
     } catch {
       setBookmarksReady(false);
       setWarning("このブラウザの保存した質問を読み込めませんでした。ブラウザの保存設定をご確認ください。");
+    }
+  }
+
+  function handleRecentScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+      setRecentLimit(prev => (prev < conversations.length ? prev + RECENT_STEP : prev));
     }
   }
 
@@ -234,6 +261,7 @@ export default function LearningApp() {
     const previousId = activeId;
     const previousMessages = active?.messages ?? [];
     readingEarlierRef.current = false;
+    voice.cancel();
     setBusy(true); setPendingQuestion(question); setInput(""); setError(""); setWarning(""); setView("chat");
     try {
       const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
@@ -313,8 +341,11 @@ export default function LearningApp() {
         <button className={view === "history" ? "active" : ""} onClick={() => nav("history")} disabled={busy}><History size={19} />質問の履歴{conversations.length > 0 && <span className="nav-count">{conversations.length}</span>}</button>
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => nav("bookmarks")} disabled={busy}><Bookmark size={19} />保存した質問</button>
       </nav>
-      <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
-        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.slice(0, 5).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+      <div className="recent-area" onScroll={handleRecentScroll}><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
+        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : <>
+          {conversations.slice(0, recentLimit).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+          {recentLimit < conversations.length && <button type="button" className="recent-more" onClick={() => setRecentLimit(prev => Math.min(conversations.length, prev + RECENT_STEP))}>さらに読み込む（残り{conversations.length - recentLimit}件）</button>}
+        </>}
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
@@ -323,7 +354,7 @@ export default function LearningApp() {
     </aside>
 
     <main className={`main-panel${view === "chat" && !hasChat ? " is-home" : ""}`}>
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><span className="desktop-crumb">学習スペース</span><ChevronRight className="desktop-crumb" size={14} /><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
 
       {view === "chat" ? <>
         {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${savedIds.has(active.id) ? "is-saved" : ""}`} onClick={() => bookmark(active)} disabled={!bookmarksReady} aria-label={savedIds.has(active.id) ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={savedIds.has(active.id) ? "currentColor" : "none"} /></button>}</div> : null}
@@ -354,8 +385,9 @@ export default function LearningApp() {
           {error && <div className="alert error" role="alert"><CircleHelp size={17} /><span>{error}</span><button aria-label="通知を閉じる" onClick={() => setError("")}><X size={16} /></button></div>}
           {warning && <div className="alert warning" role="status"><CircleHelp size={17} /><span>{warning}</span><button aria-label="通知を閉じる" onClick={() => setWarning("")}><X size={16} /></button></div>}
           <form className="composer" onSubmit={send}>
+            {voice.listening && voice.interim && <div className="voice-interim" aria-live="polite"><Mic size={14} /><span>{voice.interim}</span></div>}
             <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span><button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
+            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{voice.isStarting ? "マイク起動中…" : voice.listening ? "音声入力中…" : input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span>{voice.supported && <button type="button" className={`voice-button${voice.listening ? " is-listening" : ""}${voice.isStarting ? " is-starting" : ""}`} aria-label={voice.listening ? "音声入力を停止" : "音声で入力"} onClick={(e) => { e.preventDefault(); voice.toggle(); }} disabled={busy || active?.persisted === false || config?.mode === "incomplete"}>{voice.listening ? <MicOff size={18} /> : <Mic size={18} />}</button>}<button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
           <div className="composer-footnote"><span>AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。</span><span className="powered"><Sparkles size={11} />{config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>

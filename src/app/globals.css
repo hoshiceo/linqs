@@ -29,13 +29,15 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .nav-active-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); margin-left: auto; display: none; }
 .main-nav button.active .nav-active-dot { display: block; }
 .nav-count { margin-left: auto; font-size: 12px; background: #e9efeb; min-width: 21px; padding: 2px 5px; text-align: center; border-radius: 5px; }
-.recent-area { padding: 0 10px; min-height: 0; overflow-y: auto; }
-.section-label { display: flex; justify-content: space-between; color: #88968f; font-size: 12px; font-weight: 500; margin-bottom: 17px; letter-spacing: .05em; }
+.recent-area { flex: 1 1 0; min-height: 0; padding: 0 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d3dfd7 transparent; }
+.section-label { position: sticky; top: 0; background: #f7f9f8; z-index: 1; padding: 2px 0 6px; display: flex; justify-content: space-between; color: #88968f; font-size: 12px; font-weight: 500; margin-bottom: 11px; letter-spacing: .05em; }
 .recent-empty { color: #8b9690; font-size: 12px; line-height: 1.95; margin: 0; }
 .recent-item { display: flex; gap: 8px; align-items: center; color: #697a71; width: 100%; text-align: left; padding: 10px 0; border: 0; background: transparent; font-size: 12px; }
 .recent-item svg { flex-shrink: 0; color: #9aa59f; }
 .recent-item span { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .recent-item:hover, .recent-item.selected { color: var(--green); }
+.recent-more { width: 100%; border: 0; background: transparent; color: #87958a; font-size: 11px; padding: 9px 0 12px; text-align: center; cursor: pointer; transition: color .16s; }
+.recent-more:hover { color: var(--green); }
 .sidebar-bottom { margin-top: auto; padding-top: 20px; }
 .help-link { margin-top: 19px; display: flex; align-items: center; gap: 9px; padding: 9px 5px; width: 100%; background: none; border: 0; font-size: 12px; color: #819086; }
 .help-link svg:last-child { margin-left: auto; }
@@ -183,6 +185,19 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .settings-modes small { font-size: 10px; color: #95a58a; }
 .mobile-menu, .mobile-close, .mobile-only { display: none; }
 
+/* Voice input */
+.voice-button { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: #87958a; transition: background .16s, color .16s, box-shadow .16s; }
+.voice-button:hover { background: #f0f5ef; color: var(--green); }
+.voice-button.is-starting { background: #fef9ee; color: #d97706; animation: voice-pulse-starting 1.2s ease-in-out infinite; }
+.voice-button.is-listening { background: #fef2f2; color: #dc2626; animation: voice-pulse 1.5s ease-in-out infinite; }
+.voice-button:disabled { color: #c3cbc5; }
+@keyframes voice-pulse-starting { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+@keyframes voice-pulse { 0%, 100% { box-shadow: 0 0 0 0 #dc262630; } 50% { box-shadow: 0 0 0 6px #dc262600; } }
+.voice-interim { display: flex; align-items: center; gap: 7px; padding: 4px 10px 6px; font-size: 12px; color: #dc2626; line-height: 1.7; }
+.voice-interim svg { flex-shrink: 0; animation: voice-pulse-icon 1s ease-in-out infinite; }
+@keyframes voice-pulse-icon { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.voice-interim span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .login-page { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 38px 22px; background: white; }
 .login-brand { display: flex; align-items: center; margin-bottom: 24px; }
 .login-brand .brand { width: 192px; }
@@ -225,7 +240,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .mobile-menu { display: grid; margin-left: -8px; }
   .mobile-close { display: grid; position: absolute; top: 2px; right: -7px; }
   .mobile-only { display: block; }
-  .desktop-crumb { display: none; }
   .topbar { height: 62px; min-height: 62px; padding: 0 22px; }
   .breadcrumb { gap: 10px; font-size: 14px; }
   .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 44px); }
@@ -243,6 +257,7 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .answer-modes svg { width: 12px; }
   .enter-hint, .powered { display: none; }
   .send-button { width: 34px; height: 34px; }
+  .voice-button { width: 34px; height: 34px; }
   .composer-footnote { font-size: 10px; margin-top: 9px; }
   .conversation-bar { padding: 12px 0; }
   .conversation-bar h1 { font-size: 12px; }
