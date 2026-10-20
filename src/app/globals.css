@@ -29,8 +29,8 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .nav-active-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); margin-left: auto; display: none; }
 .main-nav button.active .nav-active-dot { display: block; }
 .nav-count { margin-left: auto; font-size: 12px; background: #e9efeb; min-width: 21px; padding: 2px 5px; text-align: center; border-radius: 5px; }
-.recent-area { padding: 0 10px; min-height: 0; overflow-y: auto; }
-.section-label { display: flex; justify-content: space-between; color: #88968f; font-size: 12px; font-weight: 500; margin-bottom: 17px; letter-spacing: .05em; }
+.recent-area { flex: 1 1 0; min-height: 0; padding: 0 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d3dfd7 transparent; }
+.section-label { position: sticky; top: 0; background: #f7f9f8; z-index: 1; padding: 2px 0 6px; display: flex; justify-content: space-between; color: #88968f; font-size: 12px; font-weight: 500; margin-bottom: 11px; letter-spacing: .05em; }
 .recent-empty { color: #8b9690; font-size: 12px; line-height: 1.95; margin: 0; }
 .recent-item { display: flex; gap: 8px; align-items: center; color: #697a71; width: 100%; text-align: left; padding: 10px 0; border: 0; background: transparent; font-size: 12px; }
 .recent-item svg { flex-shrink: 0; color: #9aa59f; }

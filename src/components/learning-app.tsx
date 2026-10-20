@@ -331,7 +331,7 @@ export default function LearningApp() {
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => nav("bookmarks")} disabled={busy}><Bookmark size={19} />保存した質問</button>
       </nav>
       <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
-        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.slice(0, 5).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
+        {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : conversations.map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
