@@ -238,7 +238,6 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
   .mobile-menu { display: grid; margin-left: -8px; }
   .mobile-close { display: grid; position: absolute; top: 2px; right: -7px; }
   .mobile-only { display: block; }
-  .desktop-crumb { display: none; }
   .topbar { height: 62px; min-height: 62px; padding: 0 22px; }
   .breadcrumb { gap: 10px; font-size: 14px; }
   .welcome, .composer-area, .messages, .conversation-bar { width: calc(100% - 44px); }
