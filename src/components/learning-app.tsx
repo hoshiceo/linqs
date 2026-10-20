@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowDown, Bookmark, Check, ChevronRight, CircleHelp, Copy, GraduationCap, History, Lightbulb, LogOut, Menu, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, Bookmark, Check, ChevronRight, CircleHelp, Copy, GraduationCap, History, Lightbulb, LogOut, Menu, Mic, MicOff, MessageCircle, Plus, RefreshCw, Search, Send, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -13,6 +13,7 @@ import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
 import type { AnswerMode, AppConfig, Conversation, Message } from "@/lib/types";
 import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggleDeviceBookmark } from "@/lib/device-bookmarks";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 
 // Keep the preference key so the existing answer style is preserved.
 const PREF_KEY = "yui.preferences.v1";
@@ -54,6 +55,15 @@ export default function LearningApp() {
   const readingEarlierRef = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const historyChangesRef = useRef(new Map<string, Conversation | null>());
+  const voice = useVoiceInput({
+    lang: "ja-JP",
+    onTranscript: (text) => {
+      setInput((prev) => {
+        const separator = prev && !prev.endsWith("\n") && !prev.endsWith(" ") ? " " : "";
+        return prev + separator + text;
+      });
+    },
+  });
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
   const savedIds = new Set(bookmarkIds);
@@ -234,6 +244,7 @@ export default function LearningApp() {
     const previousId = activeId;
     const previousMessages = active?.messages ?? [];
     readingEarlierRef.current = false;
+    voice.cancel();
     setBusy(true); setPendingQuestion(question); setInput(""); setError(""); setWarning(""); setView("chat");
     try {
       const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
@@ -354,8 +365,9 @@ export default function LearningApp() {
           {error && <div className="alert error" role="alert"><CircleHelp size={17} /><span>{error}</span><button aria-label="通知を閉じる" onClick={() => setError("")}><X size={16} /></button></div>}
           {warning && <div className="alert warning" role="status"><CircleHelp size={17} /><span>{warning}</span><button aria-label="通知を閉じる" onClick={() => setWarning("")}><X size={16} /></button></div>}
           <form className="composer" onSubmit={send}>
+            {voice.listening && voice.interim && <div className="voice-interim" aria-live="polite"><Mic size={14} /><span>{voice.interim}</span></div>}
             <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span><button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
+            <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{voice.listening ? "音声入力中…" : input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span>{voice.supported && <button type="button" className={`voice-button${voice.listening ? " is-listening" : ""}`} aria-label={voice.listening ? "音声入力を停止" : "音声で入力"} onClick={voice.toggle} disabled={busy || active?.persisted === false || config?.mode === "incomplete"}>{voice.listening ? <MicOff size={18} /> : <Mic size={18} />}</button>}<button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
           <div className="composer-footnote"><span>AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。</span><span className="powered"><Sparkles size={11} />{config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>
