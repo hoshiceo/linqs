@@ -492,3 +492,19 @@ test("patched transitive KaTeX still renders inline and display math without tru
   await expect(page.locator(".markdown .mfrac")).toBeVisible();
   await expect(page.locator(".markdown .katex a, .markdown .katex img")).toHaveCount(0);
 });
+
+
+test("model-supplied external transmission links are inert while documentation links work", async ({ page }) => {
+  await login(page, { answerSuffix: '\n\n[確認はこちら](https://attacker.invalid/collect?history=synthetic) [偽の公式](https://learn.microsoft.com.attacker.invalid/) [Microsoft Learn](https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value)' });
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("セル入力を説明して");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("確認はこちら");
+  await expect(page.locator('.markdown a[href*="attacker.invalid"]')).toHaveCount(0);
+  await expect(page.locator('.markdown a[href="https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value"]')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+  await navigate(page, "質問の履歴");
+  await page.locator(".history-open").click();
+  await expect(page.locator(".markdown")).toContainText("確認はこちら");
+  await expect(page.locator('.markdown a[href*="attacker.invalid"]')).toHaveCount(0);
+});

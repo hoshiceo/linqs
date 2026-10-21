@@ -267,3 +267,16 @@ netlify.toml                       Netlifyビルド設定
 - [Supabaseアカウント作成API](https://supabase.com/docs/reference/javascript/auth-admin-createuser)
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [NetlifyのNext.js対応](https://docs.netlify.com/build/frameworks/framework-setup-guides/nextjs/overview/)
+
+
+## プロンプトインジェクション対策
+
+質問・会話履歴・教科書・公式資料・追加知識は、信頼できない資料としてJSONの文字列に分離してGeminiへ渡します。過去のAI回答もsystem/modelの指示として再利用せず、履歴データとして扱います。固定のsystemInstructionで、資料内の命令・役割偽装・内部指示や秘密の開示・外部送信の要求に従わない方針を指定します。AI授業で攻撃例やプロンプトの仕組みを学ぶ質問は、単語だけで拒否しません。
+
+GeminiにはJSON形式の回答を要求し、サーバー側でstatus・answer・文字数・余分なフィールドを検証します。不正な形式、拒否された要求、予期しないツール呼び出し、設定済みの実際のサーバー鍵の混入を検出した場合は、回答を保存・表示しません。現在の質問に実際のサーバー鍵が含まれる場合は、検索やGemini呼び出し前に停止します。ツール・コード実行・外部検索は有効にせず、DB操作と認可は従来どおりサーバーの固定処理とRLSで制御します。
+
+回答のリンクは、`src/lib/answer-links.ts`の文書サイト許可リストにあるHTTPSのURLだけをクリック可能にします。任意の外部サイト、偽装ホスト、認証情報・クエリ付きURLは本文の文字として表示し、保存済みの回答にも同じ制限を適用します。HTML・外部画像の無効化とCSPも維持します。
+
+これらは複数層でリスクを減らす対策であり、任意の命令上書きや全ての難読化を完全に検出する保証ではありません。構造化出力は形式を保証するための仕組みで、回答内容の正しさや安全性そのものの保証にはなりません。設定済み鍵との一致検査は、その鍵の平文・URLエンコード・Base64表現を対象とし、未知の秘密全般を識別するものではありません。実モデルでの評価には架空の入力だけを使い、本番DBを変更しません。
+
+設計の参考: [OWASPのプロンプトインジェクション対策](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html)、[Geminiの構造化出力](https://ai.google.dev/gemini-api/docs/structured-output)。
