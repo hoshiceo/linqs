@@ -8,6 +8,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { apiFetch, getSupabase, signInClassAccount, signOutClassAccount } from "@/lib/supabase-client";
 import ClassLogin from "./class-login";
+import { safeAnswerHref } from "@/lib/answer-links";
 import Logo from "./logo";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
@@ -23,7 +24,7 @@ const RECENT_STEP = 10;
 type View = "chat" | "history" | "bookmarks";
 
 function Markdown({ content }: { content: string }) {
-  return <div className="markdown"><ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { trust: false, maxSize: 32, maxExpand: 1000 }]]} components={{ img: ({ alt }) => <span>{alt}</span>, a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{content}</ReactMarkdown></div>;
+  return <div className="markdown"><ReactMarkdown skipHtml remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { trust: false, maxSize: 32, maxExpand: 1000 }]]} components={{ img: ({ alt }) => <span>{alt}</span>, a: ({ children, href }) => { const safeHref = safeAnswerHref(href); return safeHref ? <a href={safeHref} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>; } }}>{content}</ReactMarkdown></div>;
 }
 
 export default function LearningApp() {
