@@ -6,7 +6,7 @@ export async function GET(request: Request) {
     const { supabase } = await authenticate(request);
     const { data, error } = await supabase.from("conversations").select("id,title,subject,course_id,bookmarked,created_at,updated_at,messages(id,role,content,created_at)").order("updated_at", { ascending: false }).limit(100);
     if (error) throw new ApiError(503, "履歴を読み込めませんでした。管理者にデータベース設定をご確認ください。");
-    return Response.json({ conversations: (data ?? []).map(c => ({ ...c, messages: [...c.messages].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)) })) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ conversations: (data ?? []).map(c => ({ ...c, messages: [...c.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)) })) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
 }
 
