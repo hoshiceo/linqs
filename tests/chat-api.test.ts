@@ -265,6 +265,34 @@ describe("Chat API boundary", () => {
     expect(await response.text()).not.toContain("server-only-test-secret");
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
+  it("rejects unknown courses before quota, retrieval or generation", async () => {
+    expect((await POST(request({ courseId: "unknown-course" }))).status).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+  });
+  it("uses server assignments, ignores client filename overrides and persists the selected course", async () => {
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Webdesighn.docx", page_count: 144, source_format: "docx" }, { filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] : name === "match_textbook_chunks" ? [] : id, error: null }));
+    const response = await POST(request({ courseId: "website-production", message: "Webデザインの基本を教えて", textbookFilenames: ["Excel＿VBA.pdf"] }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).courseId).toBe("website-production");
+    expect(mocks.rpc.mock.calls.filter(call => call[0] === "match_textbook_chunks").map(call => call[1].p_filename)).toEqual(["Webdesighn.docx"]);
+    expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("Webサイト制作実践科");
+    expect(mocks.rpc.mock.calls.at(-1)?.[1].p_course_id).toBe("website-production");
+  });
+  it("restores saved course context for cached clients and rejects course changes before model cost", async () => {
+    const previousFrom = mocks.from.getMockImplementation()!;
+    mocks.from.mockImplementation((table: string) => table === "conversations"
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id, course_id: "pc-ai-skills" }, error: null }) }) }) }
+      : table === "messages" ? { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) } : previousFrom(table));
+    for (const courseId of ["website-production", null]) {
+      expect((await POST(request({ conversationId: id, courseId }))).status).toBe(409);
+    }
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] : name === "match_textbook_chunks" ? [] : id, error: null }));
+    expect((await POST(request({ conversationId: id }))).status).toBe(200);
+    expect(mocks.rpc.mock.calls.at(-1)?.[1].p_course_id).toBe("pc-ai-skills");
+    expect(mocks.generateContent.mock.calls[0][0].config.systemInstruction).toContain("パソコン・AIスキルアップ科");
+  });
   it("refuses unknown conversation IDs before using quota or calling the model", async () => {
     mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) });
     expect((await POST(request({ conversationId: id }))).status).toBe(404);

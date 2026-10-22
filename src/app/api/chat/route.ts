@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { apiError, ApiError, authenticate, exchangeWriteKey, readJson } from "@/lib/server";
+import { getCourse, type CourseId } from "@/lib/courses";
 import { chatSchema } from "@/lib/validation";
 import { tutorInstruction } from "@/lib/tutor";
 import { assertNoRuntimeSecrets, buildTutorContents, PROMPT_SECURITY_INSTRUCTION, tutorReplyJsonSchema, validateTutorReply } from "@/lib/prompt-security";
@@ -23,11 +24,16 @@ export async function POST(request: Request) {
     if (!parsed.success) throw new ApiError(400, "質問は1〜3,000文字で入力してください。");
     const { conversationId, message, subject, mode } = parsed.data;
     assertNoRuntimeSecrets(message, true);
+    let courseId: CourseId | null = parsed.data.courseId ?? null;
     let history: { role: string; content: string }[] = [];
     if (conversationId) {
-      const { data, error } = await supabase.from("conversations").select("id").eq("id", conversationId).maybeSingle();
+      const { data, error } = await supabase.from("conversations").select("id,course_id").eq("id", conversationId).maybeSingle();
       if (error) throw new ApiError(503, "質問履歴を確認できませんでした。");
       if (!data) throw new ApiError(404, "質問履歴が見つかりませんでした。");
+      const savedCourse = data.course_id ?? null;
+      if (savedCourse !== null && !getCourse(savedCourse)) throw new ApiError(503, "この質問のコース情報を確認できませんでした。");
+      if (parsed.data.courseId !== undefined && parsed.data.courseId !== savedCourse) throw new ApiError(409, "会話の途中でコースは変更できません。コースを選んで新しい質問を始めてください。");
+      courseId = savedCourse;
       const previous = await supabase.from("messages").select("role,content,created_at").eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(20);
       if (previous.error) throw new ApiError(503, "質問履歴を読み込めませんでした。");
       history = [...(previous.data ?? [])].reverse();
@@ -40,13 +46,13 @@ export async function POST(request: Request) {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!, httpOptions: { timeout: 40000 } });
     const [knowledge, textbookResult, references] = await Promise.all([
       retrieveKnowledge(supabase, message, history),
-      retrieveTextbooks(supabase, ai, message, history),
+      retrieveTextbooks(supabase, ai, message, history, getCourse(courseId)?.textbookFilenames),
       retrieveVbaReferences(subject, message, history),
     ]);
     const knowledgeContext = knowledgeInstruction(knowledge);
     const textbookContext = textbookInstruction(textbookResult);
     const referenceInstruction = vbaReferenceInstruction(references);
-    const systemInstruction = tutorInstruction(subject, mode) + PROMPT_SECURITY_INSTRUCTION;
+    const systemInstruction = tutorInstruction(subject, mode, courseId) + PROMPT_SECURITY_INSTRUCTION;
     const contents = buildTutorContents(message, history, { official: referenceInstruction, knowledge: knowledgeContext, textbooks: textbookContext });
     let answer: string;
     try {
@@ -68,12 +74,12 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.rpc("save_question_exchange", {
       p_conversation_id: conversationId, p_title: message.slice(0, 50), p_subject: subject,
       p_question: message, p_answer: answer,
-      p_write_key: writeKey, p_ticket: allowance.data,
+      p_write_key: writeKey, p_ticket: allowance.data, p_course_id: courseId,
     });
     if (error) {
       // The generated response remains usable if persistence fails. Never silently claim it was saved.
-      return Response.json({ answer, conversationId, saved: false, warning: "回答は表示できますが、履歴を保存できませんでした。必要な内容をコピーしてください。" });
+      return Response.json({ answer, conversationId, courseId, saved: false, warning: "回答は表示できますが、履歴を保存できませんでした。必要な内容をコピーしてください。" });
     }
-    return Response.json({ answer, conversationId: data, saved: true });
+    return Response.json({ answer, conversationId: data, courseId, saved: true });
   } catch (error) { return apiError(error); }
 }

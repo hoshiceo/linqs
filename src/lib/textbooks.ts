@@ -31,32 +31,46 @@ export function textbookFilters(query: string, catalog: TextbookCatalog) {
   return { filename: book?.filename ?? null, page };
 }
 
-export async function retrieveTextbooks(db: SupabaseClient, ai: GoogleGenAI, question: string, history: { role: string; content: string }[]): Promise<TextbookResult> {
+export async function retrieveTextbooks(db: SupabaseClient, ai: GoogleGenAI, question: string, history: { role: string; content: string }[], allowedFilenames?: readonly string[]): Promise<TextbookResult> {
   const { data, error } = await db.rpc("textbook_catalog");
   const catalog = catalogSchema.safeParse(data);
   if (error || !catalog.success) throw new ApiError(503, "教科書の検索を準備できませんでした。管理者に設定をご確認ください。");
-  if (!catalog.data.length) {
+  const allowed = allowedFilenames ? new Set(allowedFilenames.map(filename => filename.normalize("NFC"))) : null;
+  const scopedCatalog = catalog.data.filter(book => !allowed || allowed.has(book.filename.normalize("NFC")));
+  if (!scopedCatalog.length) {
+    if (allowed) throw new ApiError(503, "このコースの教科書の登録がまだ完了していません。管理者にご確認ください。");
     if (/教科書|教材|テキスト/.test(question)) throw new ApiError(503, "教科書の登録がまだ完了していません。管理者にご確認ください。");
     return { status: "empty", chunks: [] };
   }
   const query = textbookQuery(question, history);
-  const { filename, page } = textbookFilters(query, catalog.data);
+  const namesTextbook = /教科書|教材|テキスト|ページ|頁|\.(?:pdf|docx)\b/i.test(query);
+  const requestedBook = namesTextbook ? textbookFilters(query, catalog.data).filename : null;
+  if (requestedBook && !scopedCatalog.some(book => book.filename === requestedBook)) {
+    throw new ApiError(400, "指定された教科書は、このコースの対象外です。対応するコースを選んで新しい質問を始めてください。");
+  }
+  const { filename, page } = textbookFilters(query, scopedCatalog);
   let values: number[] | undefined;
   try {
     const response = await ai.models.embedContent({ model: EMBEDDING_MODEL, contents: query, config: { taskType: "RETRIEVAL_QUERY", outputDimensionality: DIMENSIONS, httpOptions: { timeout: 10000 } } });
     values = response.embeddings?.[0]?.values;
   } catch { throw new ApiError(503, "教科書を検索できませんでした。少し時間をおいてお試しください。"); }
   if (values?.length !== DIMENSIONS || !values.every(Number.isFinite)) throw new ApiError(503, "教科書の検索結果を確認できませんでした。");
-  const result = await db.rpc("match_textbook_chunks", { p_embedding: JSON.stringify(values), p_count: 6, p_min_similarity: page ? -1 : 0.45, p_filename: filename, p_page: page });
-  const parsed = chunkSchema.safeParse(result.data);
-  if (result.error || !parsed.success) throw new ApiError(503, "教科書の検索結果を読み込めませんでした。");
+  // Filter each database search before its top-k limit, so other courses cannot crowd out relevant results.
+  const filenames = filename ? [filename] : allowed ? scopedCatalog.map(book => book.filename) : [null];
+  const results = await Promise.all(filenames.map(async target => {
+    const result = await db.rpc("match_textbook_chunks", { p_embedding: JSON.stringify(values), p_count: 6, p_min_similarity: page ? -1 : 0.45, p_filename: target, p_page: page });
+    const parsed = chunkSchema.safeParse(result.data);
+    if (result.error || !parsed.success) throw new ApiError(503, "教科書の検索結果を読み込めませんでした。");
+    return parsed.data.filter(chunk => (!target || chunk.filename === target) && (!page || chunk.page === page));
+  }));
   const chunks: TextbookChunk[] = [];
   let characters = 0;
-  for (const chunk of parsed.data) {
-    const book = catalog.data.find(book => book.filename === chunk.filename && book.source_format === chunk.source_format);
+  for (const chunk of results.flat().sort((a, b) => b.similarity - a.similarity || a.id.localeCompare(b.id))) {
+    const book = scopedCatalog.find(book => book.filename === chunk.filename && book.source_format === chunk.source_format);
     if (!book || chunk.page > book.page_count || characters + chunk.content.length > 9000) continue;
     if (chunks.some(existing => existing.id === chunk.id)) continue;
     chunks.push(chunk); characters += chunk.content.length;
+    if (chunks.length === 6) break;
   }
   return { status: chunks.length ? "matched" : "unmatched", chunks };
 }

@@ -59,9 +59,9 @@ export async function mockClassApi(page: Page, { configured = true, answerSuffix
         ? "### まずはヒント\n対象のシートとセルを指定する方法を考えてみましょう。"
         : "### セルに文字を入力\n```vba\nOption Explicit\nSub Greeting()\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"こんにちは\"\nEnd Sub\n```")) + answerSuffix;
       const previous = conversations.find(c => c.id === body.conversationId);
-      const conversation: Conversation = { id: previous?.id || randomUUID(), title: previous?.title || body.message, subject: "すべて", bookmarked: previous?.bookmarked || false, created_at: previous?.created_at || now, updated_at: now, messages: [...(previous?.messages || []), { id: randomUUID(), role: "user", content: body.message, created_at: now }, { id: randomUUID(), role: "assistant", content: answer, created_at: now }] };
+      const conversation: Conversation = { id: previous?.id || randomUUID(), title: previous?.title || body.message, subject: "すべて", course_id: previous?.course_id ?? body.courseId ?? null, bookmarked: previous?.bookmarked || false, created_at: previous?.created_at || now, updated_at: now, messages: [...(previous?.messages || []), { id: randomUUID(), role: "user", content: body.message, created_at: now }, { id: randomUUID(), role: "assistant", content: answer, created_at: now }] };
       conversations = [conversation, ...conversations.filter(c => c.id !== conversation.id)];
-      return json(route, { answer, conversationId: conversation.id, saved: true });
+      return json(route, { answer, conversationId: conversation.id, courseId: conversation.course_id, saved: true });
     }
     return json(route, { error: "Unexpected test API request" }, 500);
   });

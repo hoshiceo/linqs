@@ -44,6 +44,7 @@ describe("Supabase migration: ownership, grants, transactions and shared quota",
     await db.exec(readFileSync(new URL("../supabase/migrations/001_learning_assistant.sql", import.meta.url), "utf8"));
     await db.exec(readFileSync(new URL("../supabase/migrations/002_vocational_subjects.sql", import.meta.url), "utf8"));
     await db.exec(readFileSync(new URL("../supabase/migrations/004_server_exchange_writer.sql", import.meta.url), "utf8"));
+    await db.exec(readFileSync(new URL("../supabase/migrations/006_conversation_courses.sql", import.meta.url), "utf8"));
     await db.exec("set role service_role");
     for (const id of [alice, bob]) await db.query("select public.configure_exchange_writer($1, $2)", [id, writerKeys[id]]);
     await db.exec("reset role");
@@ -146,6 +147,26 @@ describe("Supabase migration: ownership, grants, transactions and shared quota",
     expect((await db.query("select * from public.conversations")).rows).toHaveLength(0);
   });
 
+  it("persists a course atomically, blocks retagging, and preserves old unassigned history", async () => {
+    await asUser(alice);
+    const ticket = await reserve();
+    const args = [null, "コースの質問", "すべて", "質問", "解説", writerKeys[alice], ticket];
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7,$8)", [...args, "invalid"])).rejects.toThrow("Invalid course");
+    const { rows } = await db.query<{ id: string }>("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7,$8) as id", [...args, "website-production"]);
+    const id = rows[0].id;
+    expect((await db.query("select course_id from public.conversations where id = $1", [id])).rows).toEqual([{ course_id: "website-production" }]);
+    const next = [id, ...args.slice(1, 6), await reserve()];
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7,$8)", [...next, "pc-ai-skills"])).rejects.toThrow("course cannot change");
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7)", next)).rejects.toThrow("course cannot change");
+    await expect(db.query("update public.conversations set course_id = null where id = $1", [id])).rejects.toThrow("permission denied");
+    expect((await db.query("select * from public.messages where conversation_id = $1", [id])).rows).toHaveLength(2);
+    await db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7,$8)", [...next, "website-production"]);
+    expect((await db.query("select * from public.messages where conversation_id = $1", [id])).rows).toHaveLength(4);
+    await asUser(bob);
+    await expect(db.query("select public.save_question_exchange($1,$2,$3,$4,$5,$6,$7,$8)", [id, ...args.slice(1, 5), writerKeys[bob], await reserve(), "website-production"])).rejects.toThrow("Conversation not found");
+    await asUser(alice);
+    await db.query("delete from public.conversations where id = $1", [id]);
+  });
   it("upgrades existing school subjects without losing history or sharing access", async () => {
     // Simulate the constraint in the previously shipped schema.
     await db.exec(`alter table public.conversations drop constraint conversations_subject_check;

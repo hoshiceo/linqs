@@ -19,6 +19,59 @@ async function login(page: Page, options?: Parameters<typeof mockClassApi>[1]) {
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
 }
 
+test("course navigation starts fresh questions while keeping shared history accessible", async ({ page }) => {
+  await login(page, { answerText: "登録された教材をもとにした解説です。" });
+  const requests: { conversationId: string | null; message: string; courseId: string | null }[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/chat" && request.method() === "POST") requests.push(request.postDataJSON());
+  });
+  await navigate(page, "Webサイト制作実践科");
+  await expect(page.getByRole("heading", { name: "Webサイト制作実践科", exact: true })).toBeVisible();
+  await expect(page.locator(".mobile-overlay")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "このコースの教科書" })).toContainText("PHP");
+  await expect(page.getByRole("region", { name: "このコースの教科書" })).not.toContainText("Excel＿VBA");
+  await page.getByRole("button", { name: "HTMLとCSSの役割の違いは？", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveValue(/HTMLとCSSの役割/);
+  expect(requests).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `test-results/courses-web-${test.info().project.name}.png`, animations: "disabled", scale: "css" });
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("登録された教材");
+
+  await navigate(page, "パソコン・AIスキルアップ科");
+  await expect(page.getByRole("heading", { name: "パソコン・AIスキルアップ科", exact: true })).toBeVisible();
+  await expect(page.locator(".markdown")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "このコースの教科書" })).toContainText("Excel＿VBA");
+  await expect(page.getByRole("region", { name: "このコースの教科書" })).not.toContainText("PHP");
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveValue("");
+  await page.getByRole("button", { name: "ExcelのIF関数を使うには？", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toHaveValue(/ExcelのIF関数/);
+  await page.screenshot({ path: `test-results/courses-pc-ai-${test.info().project.name}.png`, animations: "disabled", scale: "css" });
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toContainText("登録された教材");
+  expect(requests).toHaveLength(2);
+  expect(requests.every(request => request.conversationId === null)).toBe(true);
+  expect(requests.map(request => request.courseId)).toEqual(["website-production", "pc-ai-skills"]);
+
+  await navigate(page, "質問を検索");
+  await expect(page.locator(".history-card")).toHaveCount(2);
+  await page.getByRole("button", { name: /HTMLとCSSの役割.*1回の質問/ }).click();
+  await expect(page.locator(".markdown")).toContainText("登録された教材");
+  await expect(page.locator(".topbar")).toContainText("Webサイト制作実践科");
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
+  await navigate(page, "質問を検索");
+  await page.getByRole("button", { name: /HTMLとCSSの役割.*1回の質問/ }).click();
+  await expect(page.locator(".topbar")).toContainText("Webサイト制作実践科");
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("それを詳しく説明して");
+  await page.getByRole("button", { name: "質問を送信" }).click();
+  await expect(page.locator(".markdown")).toHaveCount(2);
+  expect(requests[2].courseId).toBe("website-production");
+  expect(requests[2].conversationId).toBeTruthy();
+  await navigate(page, "新しい質問");
+  await expect(page.getByRole("heading", { name: "何を知りたいですか？", exact: true })).toBeVisible();
+});
+
 test("a shared knowledge answer appears in chat and remains in saved history", async ({ page }) => {
   const answer = "理恵子先生の好きな食べ物は、想夫恋の焼きそばです。";
   await login(page, { answerText: answer });
@@ -27,7 +80,7 @@ test("a shared knowledge answer appears in chat and remains in saved history", a
   await expect(page.locator(".markdown")).toHaveText(answer);
   await expect(page.locator(".markdown")).not.toContainText("教科書");
   await page.screenshot({ path: `test-results/shared-knowledge-${test.info().project.name}.png` });
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await page.getByRole("button", { name: /理恵子先生の好きな食べ物は？.*1回の質問/ }).click();
   await expect(page.locator(".markdown")).toHaveText(answer);
 });
@@ -58,21 +111,21 @@ test("a restored session waits for account verification but can ask before histo
     releaseAccount();
     await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
     await expect.poll(() => historyRequested).toBe(true);
-    await navigate(page, "質問の履歴");
+    await navigate(page, "質問を検索");
     await expect(page.getByRole("heading", { name: "履歴を読み込んでいます…" })).toBeVisible();
     await expect(page.getByText("まだ質問はありません", { exact: true })).toHaveCount(0);
     if (await page.getByRole("button", { name: "メニューを開く" }).isVisible()) {
       await expect.poll(() => page.locator(".sidebar").evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
     }
     await page.screenshot({ path: `test-results/background-history-${test.info().project.name}.png` });
-    await navigate(page, "AIに質問");
+    await navigate(page, "新しい質問");
     await page.getByRole("textbox", { name: "質問を入力" }).fill("履歴の読み込み中の質問");
     await page.getByRole("button", { name: "質問を送信" }).click();
     await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
     releaseHistory();
     await expect(page.locator(".recent-item")).toHaveCount(2);
     await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
-    await navigate(page, "質問の履歴");
+    await navigate(page, "質問を検索");
     await expect(page.locator(".history-card")).toHaveCount(2);
     await page.getByRole("button", { name: /履歴の読み込み中の質問.*1回の質問/ }).click();
     await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
@@ -107,12 +160,12 @@ test("stalled history times out and offers a retry while the question editor rem
     await page.getByLabel("パスワード", { exact: true }).fill("test-password");
     await page.getByRole("button", { name: "ログイン", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeEnabled();
-    await navigate(page, "質問の履歴");
+    await navigate(page, "質問を検索");
     await expect(page.getByRole("heading", { name: "履歴を読み込んでいます…" })).toBeVisible();
     await page.clock.fastForward(15001);
     await expect(page.locator(".alert.error")).toContainText("履歴を読み込めませんでした");
     await expect(page.getByRole("button", { name: "クラスの履歴を更新" })).toBeEnabled();
-    await navigate(page, "AIに質問");
+    await navigate(page, "新しい質問");
     await page.getByRole("textbox", { name: "質問を入力" }).fill("接続待ちが終わった後の質問");
     await expect(page.getByRole("button", { name: "質問を送信" })).toBeEnabled();
   } finally { releaseHistory(); }
@@ -131,7 +184,7 @@ test("failed background history can be retried without blocking questions", asyn
   await page.getByRole("button", { name: "質問を送信" }).click();
   await expect(page.locator(".markdown")).toContainText("セルに文字を入力");
   await page.unroute("**/api/conversations");
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
   await expect(page.getByRole("button", { name: "クラスの履歴を更新" })).toBeEnabled();
   await expect(page.locator(".history-card")).toHaveCount(1);
@@ -172,7 +225,7 @@ test("logging out cancels background history before another login", async ({ pag
 test("a delayed history refresh cannot restore a question deleted while it was loading", async ({ page }) => {
   const previous = { id: "44444444-4444-4444-8444-444444444444", title: "更新中に削除する質問", subject: "すべて" as const, bookmarked: false, created_at: "2026-10-12T00:00:00Z", updated_at: "2026-10-12T00:00:00Z", messages: [] };
   await login(page, { initialConversations: [previous] });
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await expect(page.locator(".history-card")).toHaveCount(1);
   let releaseHistory!: () => void;
   const waiting = new Promise<void>(resolve => { releaseHistory = resolve; });
@@ -216,7 +269,7 @@ test("a student can ask, save, find, reopen and delete a question", async ({ pag
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
   await navigate(page, "保存した質問");
   await expect(page.locator(".history-card")).toHaveCount(1);
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await expect(page.locator(".history-card")).toHaveCount(1);
   await page.getByRole("button", { name: "この質問を削除" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -241,7 +294,7 @@ test("bookmarks are independent between devices and survive reload and shared hi
     await signIn(page); await signIn(second);
     await page.getByRole("button", { name: "保存を解除", exact: true }).click();
     await expect(page.locator(".history-card")).toHaveCount(0);
-    await navigate(page, "質問の履歴");
+    await navigate(page, "質問を検索");
     await page.getByRole("button", { name: "クラスの履歴を更新" }).click();
     await navigate(page, "保存した質問");
     await expect(page.locator(".history-card")).toHaveCount(0);
@@ -276,7 +329,7 @@ test("long answers open at their beginning and offer a deliberate jump to the en
   await expect(page.locator(".markdown")).toHaveCount(2);
   await expect.poll(startOffset).toBeGreaterThanOrEqual(20);
   await expect.poll(startOffset).toBeLessThanOrEqual(28);
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await page.locator(".history-open").click();
   await expect.poll(startOffset).toBeGreaterThanOrEqual(20);
   await expect.poll(startOffset).toBeLessThanOrEqual(28);
@@ -420,7 +473,7 @@ test("only cited textbook pages appear once in answers and reopened history", as
   await expect(references).toHaveText("教材1・教材3：Excel＿VBA.pdf — PDF p.20");
   await page.reload();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await expect(page.locator(".history-card")).toHaveCount(1);
   await page.locator(".history-open").click();
   await expect(references).toHaveCount(1);
@@ -443,7 +496,7 @@ test("saved official reference excerpts retain their citations in answers and re
   const source = page.locator('.markdown a[href="https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value"]').first();
   await expect(source).toBeVisible();
   await expect(source).toHaveAttribute("target", "_blank");
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await page.locator(".history-open").click();
   await expect(source).toBeVisible();
   await page.locator(".markdown p").last().scrollIntoViewIfNeeded();
@@ -503,7 +556,7 @@ test("model-supplied external transmission links are inert while documentation l
   await expect(page.locator('.markdown a[href="https://learn.microsoft.com/ja-jp/office/vba/api/excel.range.value"]')).toBeVisible();
   await page.reload();
   await expect(page.getByRole("textbox", { name: "質問を入力" })).toBeVisible();
-  await navigate(page, "質問の履歴");
+  await navigate(page, "質問を検索");
   await page.locator(".history-open").click();
   await expect(page.locator(".markdown")).toContainText("確認はこちら");
   await expect(page.locator('.markdown a[href*="attacker.invalid"]')).toHaveCount(0);

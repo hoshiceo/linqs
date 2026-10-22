@@ -1,3 +1,5 @@
+import type { CourseId } from "./courses";
+
 export const subjects = ["すべて", "AI活用", "Excel VBA"] as const;
 export type Subject = (typeof subjects)[number];
 export type AnswerMode = "explain" | "hint";
@@ -6,6 +8,7 @@ export type Conversation = {
   id: string;
   title: string;
   subject: Subject;
+  course_id?: CourseId | null;
   bookmarked: boolean;
   created_at: string;
   updated_at: string;
