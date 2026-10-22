@@ -52,6 +52,42 @@ describe("Textbook retrieval and honest citations", () => {
     const bounded = await retrieveTextbooks(client.db, client.ai, "質問", []);
     expect(bounded.chunks.reduce((sum, chunk) => sum + chunk.content.length, 0)).toBeLessThanOrEqual(9000);
   });
+  it("searches only assigned books before ranking and excludes foreign chunks defensively", async () => {
+    const web = { ...chunk, id: "44444444-4444-4444-8444-444444444444", filename: "Webdesighn.docx", source_format: "docx" as const, similarity: 0.6 };
+    const client = clients([{ ...chunk, similarity: 0.99 }, web]);
+    const result = await retrieveTextbooks(client.db, client.ai, "デザインについて", [], ["Webdesighn.docx"]);
+    expect(result.chunks).toEqual([web]);
+    expect(client.rpc.mock.calls.filter(call => call[0] === "match_textbook_chunks").map(call => call[1].p_filename)).toEqual(["Webdesighn.docx"]);
+  });
+  it("merges ranked matches across assigned books and retains the six most relevant snippets", async () => {
+    const client = clients();
+    client.rpc.mockImplementation((name: string, args?: { p_filename: string }) => Promise.resolve({ data: name === "textbook_catalog" ? catalog : Array.from({ length: 6 }, (_, i) => ({ ...chunk, id: `33333333-3333-4333-8333-${String(i + (args?.p_filename === "Webdesighn.docx" ? 10 : 0)).padStart(12, "0")}`, filename: args!.p_filename, source_format: args!.p_filename.endsWith("docx") ? "docx" : "pdf", similarity: 0.99 - i * 0.05 - (args!.p_filename.endsWith("docx") ? 0.01 : 0) })), error: null }));
+    const result = await retrieveTextbooks(client.db, client.ai, "共通の質問", [], catalog.map(book => book.filename));
+    expect(result.chunks).toHaveLength(6);
+    expect(new Set(result.chunks.map(chunk => chunk.filename)).size).toBe(2);
+    expect(result.chunks.map(chunk => chunk.similarity)).toEqual([...result.chunks.map(chunk => chunk.similarity)].sort((a, b) => b - a));
+    expect(client.embedContent).toHaveBeenCalledTimes(1);
+  });
+  it("refuses an explicitly requested foreign textbook before embedding, and fails closed for empty assignments", async () => {
+    const client = clients();
+    await expect(retrieveTextbooks(client.db, client.ai, "VBAの教科書の20ページ", [], ["Webdesighn.docx"])).rejects.toThrow("対象外");
+    await expect(retrieveTextbooks(client.db, client.ai, "質問", [], [])).rejects.toThrow("このコースの教科書");
+    expect(client.embedContent).not.toHaveBeenCalled();
+    expect(client.rpc.mock.calls.every(call => call[0] === "textbook_catalog")).toBe(true);
+  });
+  it("matches decomposed Japanese filenames without broadening the filename filter", async () => {
+    const filename = "ワープロ応用.pdf".normalize("NFD");
+    const client = clients();
+    client.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "textbook_catalog" ? [{ filename, page_count: 52, source_format: "pdf" }] : [{ ...chunk, filename }], error: null }));
+    expect((await retrieveTextbooks(client.db, client.ai, "書式について", [], ["ワープロ応用.pdf"])).chunks[0].filename).toBe(filename);
+    expect(client.rpc.mock.calls[1][1].p_filename).toBe(filename);
+  });
+  it("allows generic AI questions in a web course without borrowing the AI textbook", async () => {
+    const client = clients();
+    client.rpc.mockImplementation((name: string) => Promise.resolve({ data: name === "textbook_catalog" ? [...catalog, { filename: "AI.pdf", page_count: 10, source_format: "pdf" }] : [], error: null }));
+    expect((await retrieveTextbooks(client.db, client.ai, "AIでHTMLを書く方法", [], ["Webdesighn.docx"])).status).toBe("unmatched");
+    expect(client.rpc.mock.calls[1][1].p_filename).toBe("Webdesighn.docx");
+  });
   it("lists only cited excerpts, retaining their original numbers and the answer text", () => {
     const result = { status: "matched" as const, chunks: [chunk, { ...chunk, page: 21 }, { ...chunk, page: 22 }] };
     const answer = "この説明は教材の内容に基づきます。［教材3］ 同じ箇所を再度示します。［教材3］";

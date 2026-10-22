@@ -12,6 +12,7 @@ import { safeAnswerHref } from "@/lib/answer-links";
 import Logo from "./logo";
 import { EXCEL_VBA_REFERENCE_URL } from "@/lib/vba-reference";
 import { suggestions } from "@/lib/suggestions";
+import { courses, getCourse, type CourseId } from "@/lib/courses";
 import type { AnswerMode, AppConfig, Conversation, Message } from "@/lib/types";
 import { DEVICE_BOOKMARKS_KEY, loadDeviceBookmarks, removeDeviceBookmark, toggleDeviceBookmark } from "@/lib/device-bookmarks";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -34,6 +35,7 @@ export default function LearningApp() {
   const [bookmarksReady, setBookmarksReady] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
+  const [courseId, setCourseId] = useState<CourseId | null>(null);
   const [mode, setMode] = useState<AnswerMode>("explain");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,6 +55,7 @@ export default function LearningApp() {
   const [answerJump, setAnswerJump] = useState<"start" | "end" | null>(null);
   const [recentLimit, setRecentLimit] = useState(INITIAL_RECENT_COUNT);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const historySearchRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const latestAnswerRef = useRef<HTMLDivElement>(null);
   const pendingQuestionRef = useRef<HTMLDivElement>(null);
@@ -76,6 +79,8 @@ export default function LearningApp() {
   });
   const active = conversations.find(c => c.id === activeId);
   const messages = active?.messages ?? [];
+  const selectedCourse = courses.find(course => course.id === courseId);
+  const questionExamples = selectedCourse?.suggestions ?? suggestions;
   const savedIds = new Set(bookmarkIds);
 
   function applyHistory(history: Conversation[]) {
@@ -173,7 +178,7 @@ export default function LearningApp() {
     if (busy) return;
     try {
       await signOutClassAccount();
-      setClassSignedIn(false); setActiveId(null);
+      setClassSignedIn(false); setActiveId(null); setCourseId(null);
       setConversations([]);
       setRefreshing(false); setBookmarksReady(false);
       setInput(""); setView("chat"); setModal(null); setMobileOpen(false); setError(""); setWarning("");
@@ -239,13 +244,23 @@ export default function LearningApp() {
 
   function newChat() {
     if (busy) return;
+    voice.cancel();
+    setCourseId(null);
     readingEarlierRef.current = false;
     setActiveId(null); setView("chat"); setInput(""); setError(""); setWarning(""); setMobileOpen(false);
     requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }
 
+  function openCourse(id: CourseId) {
+    if (busy) return;
+    newChat();
+    setCourseId(id);
+  }
+
   function openConversation(c: Conversation) {
     if (busy) return;
+    voice.cancel();
+    setCourseId(getCourse(c.course_id)?.id ?? null);
     readingEarlierRef.current = false;
     setActiveId(c.id); setView("chat"); setMobileOpen(false); setError(""); setWarning(""); setInput("");
   }
@@ -265,8 +280,8 @@ export default function LearningApp() {
     voice.cancel();
     setBusy(true); setPendingQuestion(question); setInput(""); setError(""); setWarning(""); setView("chat");
     try {
-      const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; warning?: string }>("/api/chat", {
-        method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, mode }),
+      const result = await apiFetch<{ answer: string; conversationId: string | null; saved: boolean; courseId: CourseId | null; warning?: string }>("/api/chat", {
+        method: "POST", body: JSON.stringify({ conversationId: previousId, message: question, mode, courseId }),
       });
       const answer = result.answer;
       const id = result.conversationId || previousId || crypto.randomUUID();
@@ -274,7 +289,7 @@ export default function LearningApp() {
       if (result.warning) setWarning(result.warning);
       const now = new Date().toISOString();
       const exchange: Message[] = [{ id: crypto.randomUUID(), role: "user", content: question, created_at: now }, { id: crypto.randomUUID(), role: "assistant", content: answer, created_at: new Date(Date.now() + 1).toISOString() }];
-      const conversation: Conversation = { id, title: active?.title || question.slice(0, 50), subject: "すべて", bookmarked: active?.bookmarked || false, created_at: active?.created_at || now, updated_at: now, messages: [...previousMessages, ...exchange], persisted: saved };
+      const conversation: Conversation = { id, title: active?.title || question.slice(0, 50), subject: "すべて", course_id: result.courseId ?? courseId, bookmarked: active?.bookmarked || false, created_at: active?.created_at || now, updated_at: now, messages: [...previousMessages, ...exchange], persisted: saved };
       historyChangesRef.current.set(id, conversation);
       setConversations(current => [conversation, ...current.filter(c => c.id !== previousId && c.id !== id)]);
       setActiveId(id);
@@ -335,18 +350,25 @@ export default function LearningApp() {
   return <div className="app-shell">
     {mobileOpen && <button className="mobile-overlay" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="メインメニュー">
-      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><span className="brand-caption">LinktoLinkの教科書に基づいて回答</span><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
-      <button className="new-chat" onClick={newChat} disabled={busy}><Plus size={19} />新しい質問</button>
-      <nav className="main-nav">
-        <button className={view === "chat" ? "active" : ""} onClick={() => nav("chat")} disabled={busy}><MessageCircle size={19} />AIに質問<span className="nav-active-dot" /></button>
-        <button className={view === "history" ? "active" : ""} onClick={() => nav("history")} disabled={busy}><History size={19} />質問の履歴{conversations.length > 0 && <span className="nav-count">{conversations.length}</span>}</button>
+      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
+      <div className="sidebar-actions">
+        <button type="button" className="new-chat" onClick={newChat} disabled={busy}><Plus size={16} strokeWidth={2} aria-hidden="true" /><span>新しい質問</span></button>
+        <button type="button" className="icon-button sidebar-search" aria-label="質問を検索" title="質問を検索" disabled={busy} onClick={() => { nav("history"); requestAnimationFrame(() => historySearchRef.current?.focus()); }}><Search size={19} aria-hidden="true" /></button>
+      </div>
+      <nav className="main-nav" aria-label="質問メニュー">
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => nav("bookmarks")} disabled={busy}><Bookmark size={19} />保存した質問</button>
       </nav>
-      <div className="recent-area" onScroll={handleRecentScroll}><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
+      <div className="sidebar-content" onScroll={handleRecentScroll}>
+      <nav className="course-nav" aria-labelledby="course-nav-heading">
+        <h2 id="course-nav-heading" className="section-label">受講中のコース</h2>
+        {courses.map(course => <button type="button" key={course.id} className={`course-item${view === "chat" && courseId === course.id ? " selected" : ""}`} aria-current={view === "chat" && courseId === course.id ? "page" : undefined} onClick={() => openCourse(course.id)} disabled={busy}><ChevronRight size={15} aria-hidden="true" /><span>{course.name}</span></button>)}
+      </nav>
+      <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
         {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : <>
           {conversations.slice(0, recentLimit).map(c => <button className={`recent-item ${activeId === c.id && view === "chat" ? "selected" : ""}`} key={c.id} onClick={() => openConversation(c)} disabled={busy}><MessageCircle size={15} /><span>{c.title}</span></button>)}
           {recentLimit < conversations.length && <button type="button" className="recent-more" onClick={() => setRecentLimit(prev => Math.min(conversations.length, prev + RECENT_STEP))}>さらに読み込む（残り{conversations.length - recentLimit}件）</button>}
         </>}
+      </div>
       </div>
       <div className="sidebar-bottom">
         <button className="help-link" onClick={() => setModal("guide")}><CircleHelp size={17} />使い方・質問のコツ<ChevronRight size={15} /></button>
@@ -355,7 +377,7 @@ export default function LearningApp() {
     </aside>
 
     <main className={`main-panel${view === "chat" && !hasChat ? " is-home" : ""}`}>
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><strong>{view === "chat" ? "AIに質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobileOpen(true)}><Menu size={22} /></button><strong>{view === "chat" ? selectedCourse?.name ?? "新しい質問" : view === "history" ? "質問の履歴" : "保存した質問"}</strong></div></header>
 
       {view === "chat" ? <>
         {hasChat ? <div className="conversation-bar"><div><h1>{active?.title || "質問への回答"}</h1></div>{active && <button className={`icon-button ${savedIds.has(active.id) ? "is-saved" : ""}`} onClick={() => bookmark(active)} disabled={!bookmarksReady} aria-label={savedIds.has(active.id) ? "保存を解除" : "この質問を保存"}><Bookmark size={19} fill={savedIds.has(active.id) ? "currentColor" : "none"} /></button>}</div> : null}
@@ -364,9 +386,11 @@ export default function LearningApp() {
           if (busy && pendingQuestionRef.current && messagesRef.current && pendingQuestionRef.current.getBoundingClientRect().top > messagesRef.current.getBoundingClientRect().top + 64) readingEarlierRef.current = true;
         }}>
           {!hasChat ? <div className="welcome">
-            <h1>何を知りたいですか？</h1>
+            {selectedCourse && <p className="course-eyebrow">コース</p>}
+            <h1>{selectedCourse?.name ?? "何を知りたいですか？"}</h1>
             <p className="welcome-description">LinktoLinkの教科書をもとに、質問に回答します。</p>
-            <div className="suggestion-grid" aria-label="質問の例">{suggestions.map(s => <button type="button" className="suggestion-card" key={s.title} onClick={() => selectSuggestion(s.prompt)}>{s.title}</button>)}</div>
+            <div className="suggestion-grid" aria-label="質問の例">{questionExamples.map(s => <button type="button" className="suggestion-card" key={s.title} onClick={() => selectSuggestion(s.prompt)}>{s.title}</button>)}</div>
+            {selectedCourse && <section className="course-textbooks" aria-label="このコースの教科書"><h2>このコースの教科書</h2><ul>{selectedCourse.textbookFilenames.map(filename => <li key={filename}>{filename.replace(/\.(pdf|docx)$/i, "").normalize("NFC")}</li>)}</ul></section>}
             <button type="button" className="question-tip" onClick={() => setModal("guide")}>質問のコツ<ChevronRight size={15} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
             {messages.map((message, index) => <div className={`message message-${message.role}${index === messages.length - 1 && message.role === "assistant" ? " latest-answer" : ""}`} key={message.id} ref={index === messages.length - 1 && message.role === "assistant" ? latestAnswerRef : undefined}>
@@ -387,12 +411,12 @@ export default function LearningApp() {
           {warning && <div className="alert warning" role="status"><CircleHelp size={17} /><span>{warning}</span><button aria-label="通知を閉じる" onClick={() => setWarning("")}><X size={16} /></button></div>}
           <form className="composer" onSubmit={send}>
             {voice.listening && voice.interim && <div className="voice-interim" aria-live="polite"><Mic size={14} /><span>{voice.interim}</span></div>}
-            <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+            <textarea ref={inputRef} aria-label="質問を入力" placeholder={active?.persisted === false ? "この回答は未保存です。「新しい質問」から続けてください。" : selectedCourse ? "このコースの授業・実習について質問してください…" : "AIの使い方、VBAのコードやエラーなどを入力してください…"} value={input} maxLength={3000} disabled={busy || active?.persisted === false || config?.mode === "incomplete"} rows={2} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
             <div className="composer-toolbar"><div className="composer-controls"><div className="answer-modes" aria-label="回答の種類"><button type="button" className={mode === "explain" ? "selected" : ""} aria-pressed={mode === "explain"} onClick={() => setMode("explain")} disabled={busy}><Sparkles size={14} />解説</button><button type="button" className={mode === "hint" ? "selected" : ""} aria-pressed={mode === "hint"} onClick={() => setMode("hint")} disabled={busy}><Lightbulb size={14} />ヒント</button></div></div><div className="send-controls"><span className="enter-hint">{voice.isStarting ? "マイク起動中…" : voice.listening ? "音声入力中…" : input.length > 2800 ? `${input.length}/3000` : "Enter で送信"}</span>{voice.supported && <button type="button" className={`voice-button${voice.listening ? " is-listening" : ""}${voice.isStarting ? " is-starting" : ""}`} aria-label={voice.listening ? "音声入力を停止" : "音声で入力"} onClick={(e) => { e.preventDefault(); voice.toggle(); }} disabled={busy || active?.persisted === false || config?.mode === "incomplete"}>{voice.listening ? <MicOff size={18} /> : <Mic size={18} />}</button>}<button className="send-button" aria-label="質問を送信" type="submit" disabled={!input.trim() || busy || !loaded || !config || config.mode === "incomplete"}><Send size={18} /></button></div></div>
           </form>
           <div className="composer-footnote"><span>AIの回答には間違いが含まれることがあります。教材やテスト用のブックでも確認してください。</span><span className="powered"><Sparkles size={11} />{config?.mode === "live" ? "Powered by Gemini" : "AI準備中"}</span></div>
         </div>
-      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "このブラウザに保存した質問です。保存・解除はほかの端末に影響しません。"}</p>{view === "history" && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      </> : <div className="library-view"><div className="library-heading"><div className="eyebrow">OUR CLASS LEARNING NOTES</div><h1>{view === "history" ? "質問の履歴" : "保存した質問"}</h1><p>{view === "history" ? "授業での疑問や解説を振り返れます。" : "このブラウザに保存した質問です。保存・解除はほかの端末に影響しません。"}</p>{view === "history" && <button className="secondary-button" onClick={refreshHistory} disabled={refreshing || busy}><RefreshCw size={15} />{refreshing ? "更新しています…" : "クラスの履歴を更新"}</button>}</div><label className="history-search"><Search size={18} /><input ref={historySearchRef} aria-label="質問を検索" placeholder="質問や回答から探す" value={query} onChange={e => setQuery(e.target.value)} /></label>
         {error && <div className="alert error" role="alert">{error}</div>}{warning && <div className="alert warning" role="status">{warning}</div>}
         {refreshing && filtered.length === 0 ? <div className="library-empty" role="status"><History size={36} strokeWidth={1.4} /><h2>履歴を読み込んでいます…</h2><p>{config?.mode === "live" ? "新しい質問は、読み込み中も送信できます。" : "読み込みが終わると、クラスの質問が表示されます。"}</p></div> : filtered.length > 0 ? <div className="history-list">{filtered.map(c => <div className="history-card" key={c.id}><button className="history-open" onClick={() => openConversation(c)}><span className="subject-icon subject-ai"><MessageCircle size={22} /></span><span><strong>{c.title}</strong><small>{new Date(c.updated_at).toLocaleDateString("ja-JP", { month: "long", day: "numeric" })} <span>·</span> {Math.floor(c.messages.length / 2)}回の質問</small></span></button><button className={`icon-button ${savedIds.has(c.id) ? "is-saved" : ""}`} aria-label={savedIds.has(c.id) ? "保存を解除" : "この質問を保存"} onClick={() => bookmark(c)} disabled={!bookmarksReady}><Bookmark size={18} fill={savedIds.has(c.id) ? "currentColor" : "none"} /></button>{view === "history" && <button className="icon-button delete-button" aria-label="この質問を削除" onClick={() => setDeleteId(c.id)}><Trash2 size={17} /></button>}</div>)}</div> : <div className="library-empty">{view === "history" ? <History size={36} strokeWidth={1.4} /> : <Bookmark size={36} strokeWidth={1.4} />}<h2>{query ? "一致する質問がありません" : view === "history" ? "まだ質問はありません" : "保存した質問はまだありません"}</h2><p>{query ? "別の言葉で検索してください。" : view === "history" ? "AI活用やExcel VBAの疑問から始めましょう。" : "回答のしおりマークを押すと、ここで読み返せます。"}</p>{!query && <button className="primary-button" onClick={newChat}><Plus size={17} />質問してみる</button>}</div>}
       </div>}
