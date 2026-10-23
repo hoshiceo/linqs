@@ -34,12 +34,10 @@ button { transition: background .16s, color .16s, border-color .16s, box-shadow 
 .sidebar-actions .sidebar-search:not(:disabled):hover { background: #eef2ef; color: var(--green-dark); }
 .course-nav { margin-bottom: 22px; }
 .course-nav .section-label { position: static; padding: 0 10px; margin: 0 0 8px; }
-.course-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px; padding: 10px 7px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: #697a71; font-size: 13px; line-height: 1.7; }
-.course-item svg { flex-shrink: 0; }
+.course-item { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: #697a71; font-size: 13px; line-height: 1.7; }
 .course-item span { overflow-wrap: anywhere; }
 .course-item:hover { background: #eef2ef; }
 .course-item.selected { color: var(--green-dark); background: #e6f0eb; font-weight: 500; }
-.course-item.selected svg { transform: rotate(90deg); }
 .main-nav { display: flex; flex-direction: column; flex-shrink: 0; gap: 6px; margin: 4px 0 0; }
 .main-nav button { display: flex; align-items: center; border: none; background: transparent; gap: 13px; border-radius: 8px; width: 100%; height: 43px; padding: 0 12px; text-align: left; color: #6a7872; font-weight: 500; }
 .main-nav button:hover { background: #eef2ef; }

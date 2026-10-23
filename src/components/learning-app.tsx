@@ -363,7 +363,7 @@ export default function LearningApp() {
       <div className="sidebar-content" onScroll={handleRecentScroll}>
       <nav className="course-nav" aria-labelledby="course-nav-heading">
         <h2 id="course-nav-heading" className="section-label">受講中のコース</h2>
-        {courses.map(course => <button type="button" key={course.id} className={`course-item${view === "chat" && courseId === course.id ? " selected" : ""}`} aria-current={view === "chat" && courseId === course.id ? "page" : undefined} onClick={() => openCourse(course.id)} disabled={busy}><ChevronRight size={15} aria-hidden="true" /><span>{course.name}</span></button>)}
+        {courses.map(course => <button type="button" key={course.id} className={`course-item${view === "chat" && courseId === course.id ? " selected" : ""}`} aria-current={view === "chat" && courseId === course.id ? "page" : undefined} onClick={() => openCourse(course.id)} disabled={busy}><span>{course.name}</span></button>)}
       </nav>
       <div className="recent-area"><div className="section-label">最近の質問<span>{conversations.length > 0 ? conversations.length : ""}</span></div>
         {conversations.length === 0 && refreshing ? <p className="recent-empty" role="status">履歴を読み込んでいます…</p> : conversations.length === 0 ? <p className="recent-empty">ここに質問が並びます。<br />授業の疑問を質問してください。</p> : <>
