@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Page, Route } from "@playwright/test";
+import type { InstructorQuestion } from "../../src/lib/instructor-questions";
 import type { Conversation } from "../../src/lib/types";
 
 // Network fixtures only: production code always requires the real class account.
@@ -12,6 +13,7 @@ export async function mockClassApi(page: Page, { configured = true, answerSuffix
   const user = { id, aud: "authenticated", role: "authenticated", email: "class@example.com", is_anonymous: false, app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: new Date().toISOString() };
   const encode = (data: object) => Buffer.from(JSON.stringify(data)).toString("base64url");
   const token = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: id, role: "authenticated", exp: expires })}.test-signature`;
+  const instructorQuestions: (InstructorQuestion & { conversationId: string; messageIndex: number })[] = [];
   let conversations: Conversation[] = structuredClone(initialConversations);
   const json = (route: Route, body: object, status = 200) => route.fulfill({ status, json: body });
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
@@ -50,6 +52,20 @@ export async function mockClassApi(page: Page, { configured = true, answerSuffix
         const body = request.postDataJSON();
         conversations = conversations.map(c => c.id === body.id ? { ...c, bookmarked: body.bookmarked } : c);
         return json(route, { ok: true });
+      }
+    }
+    if (url.pathname === "/api/instructor-questions") {
+      if (method === "GET") return json(route, { questions: instructorQuestions });
+      if (method === "POST") {
+        const body = request.postDataJSON();
+        const previous = instructorQuestions.find(q => q.conversationId === body.conversationId && q.messageIndex === body.messageIndex);
+        if (previous) return json(route, { question: previous });
+        const conversation = conversations.find(c => c.id === body.conversationId);
+        const answer = conversation?.messages[body.messageIndex];
+        if (!conversation || answer?.role !== "assistant") return json(route, { error: "対象の回答が見つかりません。" }, 404);
+        const item = { id: randomUUID(), conversationId: body.conversationId, messageIndex: body.messageIndex, course_id: conversation.course_id ?? null, conversation_title: conversation.title, original_question: conversation.messages[body.messageIndex - 1].content, ai_answer: answer.content, question: body.question, reply: null, created_at: new Date().toISOString(), replied_at: null };
+        instructorQuestions.unshift(item);
+        return json(route, { question: item });
       }
     }
     if (url.pathname === "/api/chat" && method === "POST") {
