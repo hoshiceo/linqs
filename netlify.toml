@@ -7,6 +7,7 @@
   NEXT_TELEMETRY_DISABLED = "1"
 
 # Netlify detects Next.js and installs its OpenNext adapter automatically.
-# Set application and optional email variables from .env.example in production only.
+# Set application variables from .env.example in production only.
+# Instructor notification delivery and retries run in Supabase Edge Functions.
 # Production branch: main. Disable branch deploys and Deploy Previews in project settings.
 # Develop and review dev locally at http://localhost:3000.
