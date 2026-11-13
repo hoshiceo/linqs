@@ -189,7 +189,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 2. `008_instructor_question_notifications.sql`・`009_instructor_edge_dispatch.sql`を先に開発用DBで検証し、承認されたリリース時に本番DBへ適用します。過去の受付分は通知待ちに追加しません。
 3. `supabase/functions/.env.example`を参考に、対象プロジェクトのEdge Function Secretsへ`LINQS_EXCHANGE_WRITE_KEY`（既存の保存専用鍵）・`LINQS_CLASS_ACCOUNT_USER_ID`・`LINQS_SUPABASE_PUBLISHABLE_KEY`・`RESEND_API_KEY`・`INSTRUCTOR_NOTIFICATION_FROM`・`INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED=true`を登録します。認証済み送信元の例は`Linqs <notifications@stargaz.design>`です。NetlifyへメールのAPIキーは登録しません。関数は管理者キーを使わず、公開キーと専用鍵で自クラスの通知だけを処理します。
 4. 管理者がSupabase Vaultへ`linqs_notification_project_url`（`https://<project-ref>.supabase.co`）と`linqs_notification_worker_key`（同じ保存専用鍵）を登録します。値はSQL Editorの履歴やGitへ貼らず、管理用の安全な経路から設定します。
-5. `supabase functions deploy instructor-notifications --project-ref <project-ref>`で関数を公開し、SupabaseのCron画面で`linqs-instructor-notifications`が5分間隔で登録されていることを確認します。[Edge Functionsの公開](https://supabase.com/docs/guides/functions/deploy)、[Supabaseでの定期実行](https://supabase.com/docs/guides/functions/schedule-functions)
+5. Supabase CLI 3では`supabase functions deploy instructor-notifications --remote=<project-ref> --use-api`で関数を公開し、SupabaseのCron画面で`linqs-instructor-notifications`が5分間隔で登録されていることを確認します。[Edge Functionsの公開](https://supabase.com/docs/guides/functions/deploy)、[Supabaseでの定期実行](https://supabase.com/docs/guides/functions/schedule-functions)
 
 質問と通知待ちデータを同じDBトランザクションで保存し、DBトリガーが`pg_net`でEdge Functionを呼び出します。HTTPリクエストはコミット後に実行されます。メール障害・設定不足・HTTPリクエストの登録失敗でも質問の受付と通知待ちデータを残します。Supabase Cron（`pg_cron`）が5分ごとに最大2件ずつ再試行します。Netlifyの通知用関数・定期処理は使いません。ローカル検証ではテスト内の認証・メールAPIモックを使用し、開発へ本番キーをコピーしないでください。
 
