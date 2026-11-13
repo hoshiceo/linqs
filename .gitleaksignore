@@ -1,0 +1,4 @@
+# False positive in the original public configuration template: the empty
+# RESEND_API_KEY line consumed the following public sender example. No key was
+# present. Current samples quote empty values; only this historical finding is ignored.
+e356660e76abca8ba6514e376fa1db139cea0b33:supabase/functions/.env.example:generic-api-key:7
