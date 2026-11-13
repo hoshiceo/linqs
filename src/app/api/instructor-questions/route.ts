@@ -1,5 +1,6 @@
 import { apiError, ApiError, authenticate, exchangeWriteKey, readJson } from "@/lib/server";
 import { instructorQuestionSchema } from "@/lib/instructor-questions";
+import { sendInstructorNotifications } from "@/lib/instructor-notifications";
 
 const fields = "id,course_id,conversation_title,original_question,ai_answer,question,reply,created_at,replied_at";
 const setupRequiredMessage = "講師への質問は準備中です。管理者による受付先の設定が完了してからご利用ください。";
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     if (error?.message === "Instructor question limit") throw new ApiError(429, "クラス全体で1時間の講師への質問回数（10回）に達しました。時間をおいてお試しください。");
     const receipt = Array.isArray(data) ? data[0] : data;
     if (error || !receipt?.id) throw new ApiError(503, "質問を受け付けられませんでした。管理者に設定をご確認ください。");
+    await sendInstructorNotifications(receipt.id);
     return Response.json({ question: receipt }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
 }

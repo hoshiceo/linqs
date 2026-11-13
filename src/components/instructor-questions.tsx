@@ -49,7 +49,7 @@ export function AskInstructor({ conversationId, messageIndex, originalQuestion, 
           <details className="instructor-context"><summary>講師に共有する質問とAIの回答</summary><strong>元の質問</strong><p>{originalQuestion}</p><strong>AIの回答</strong><p>{answer}</p></details>
           <form onSubmit={submit}>
             <label className="instructor-field">講師に確認したいこと<textarea ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} maxLength={2000} rows={3} required disabled={sending} placeholder="どこがわからなかったか、具体的に教えてください。" /></label>
-            <div className="instructor-form-meta"><span>質問と返信はクラス全員で共有されます。個人情報は入力しないでください。</span><span>{question.length}/2000</span></div>
+            <div className="instructor-form-meta"><span>質問と返信はクラス全員で共有されます。質問とAIの回答は講師へのメール通知にも使用します。個人情報は入力しないでください。</span><span>{question.length}/2000</span></div>
             {error && <p className="instructor-error" role="alert">{error}</p>}
             <button type="submit" className="primary-button" disabled={sending || disabled || !question.trim()}><Send size={15} />{sending ? "送信しています…" : "この内容で講師に質問する"}</button>
           </form>
