@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -63,6 +63,31 @@ describe("Instructor notification outbox security and delivery lifecycle", () =>
     historicId = await submit();
     await asRole("postgres");
     await db.exec(readFileSync(new URL("../supabase/migrations/008_instructor_question_notifications.sql", import.meta.url), "utf8"));
+    // PGlite has no hosted HTTP/cron/Vault services. These fixtures record the
+    // actual migration's dispatches and leave all application SQL unchanged.
+    await db.exec(`create schema extensions; create schema vault; create schema net; create schema cron;
+      create table vault.decrypted_secrets(name text primary key, decrypted_secret text);
+      create table net.requests(id bigserial primary key, url text, body jsonb, headers jsonb, timeout_ms integer);
+      create function net.http_post(url text, body jsonb, headers jsonb, timeout_milliseconds integer) returns bigint
+      language plpgsql as $$ declare v_id bigint; begin
+        if current_setting('test.net_failure', true) = 'yes' then raise exception 'Network enqueue unavailable'; end if;
+        insert into net.requests(url,body,headers,timeout_ms) values($1,$2,$3,$4) returning id into v_id; return v_id;
+      end; $$;
+      create table cron.job(jobid bigserial primary key, jobname text unique, schedule text, command text);
+      create function cron.schedule(text,text,text) returns bigint language sql as $$
+        insert into cron.job(jobname,schedule,command) values($1,$2,$3) returning jobid; $$;
+      create function extensions.hmac(data bytea, key bytea, algorithm text) returns bytea language plpgsql as $$
+      declare inner_pad bytea := decode(repeat('36',64),'hex'); outer_pad bytea := decode(repeat('5c',64),'hex'); i integer;
+      begin
+        if octet_length(key) <> 64 or algorithm <> 'sha256' then raise exception 'Unexpected test key'; end if;
+        for i in 0..63 loop
+          inner_pad := set_byte(inner_pad,i,get_byte(key,i) # 54);
+          outer_pad := set_byte(outer_pad,i,get_byte(key,i) # 92);
+        end loop;
+        return sha256(outer_pad || sha256(inner_pad || data));
+      end; $$;`);
+    await db.exec(readFileSync(new URL("../supabase/migrations/009_instructor_edge_dispatch.sql", import.meta.url), "utf8")
+      .replace(/^create extension if not exists .*;$/gm, ""));
     questionId = await submit();
   });
   afterAll(async () => { await db.close(); });
@@ -147,5 +172,43 @@ describe("Instructor notification outbox security and delivery lifecycle", () =>
     expect(await queue(failing)).toMatchObject({ status: "needs_review", attempts: 12 });
     await asRole("anon", "");
     expect(await claim(failing)).toBeNull();
+  });
+  it("schedules signed Edge Function dispatches and keeps secrets out of the HTTP queue", async () => {
+    await asRole("postgres");
+    expect((await db.query("select jobname,schedule,command from cron.job")).rows).toEqual([
+      { jobname: "linqs-instructor-notifications", schedule: "*/5 * * * *", command: "select linqs_private.dispatch_instructor_notifications();" },
+    ]);
+    expect((await db.query("select * from net.requests")).rows).toHaveLength(0);
+    await db.query("insert into vault.decrypted_secrets values ('linqs_notification_project_url',$1),('linqs_notification_worker_key',$2)", ["https://abcdefghijklmnopqrst.supabase.co", writer]);
+    const id = await submit();
+    await asRole("postgres");
+    const req = (await db.query<{ url: string; body: { questionId: string }; headers: Record<string,string>; timeout_ms: number; signed_body: string }>("select *, body::text signed_body from net.requests order by id desc limit 1")).rows[0];
+    expect(req.url).toBe("https://abcdefghijklmnopqrst.supabase.co/functions/v1/instructor-notifications");
+    expect(req.body).toEqual({ questionId: id });
+    expect(req.timeout_ms).toBe(25000);
+    const expected = createHmac("sha256", writer).update(`${req.headers["x-linqs-timestamp"]}.${req.signed_body}`).digest("hex");
+    expect(req.headers["x-linqs-signature"]).toBe(expected);
+    expect(JSON.stringify(req)).not.toContain(writer);
+    for (const role of ["anon", "authenticated"]) {
+      await asRole(role);
+      await expect(db.exec("select linqs_private.dispatch_instructor_notifications()")).rejects.toThrow("permission denied");
+    }
+  });
+  it("rolls back dispatches with the question but preserves the question if HTTP enqueue fails", async () => {
+    await asRole("postgres");
+    const count = (await db.query<{ count: number }>("select count(*)::int count from net.requests")).rows[0].count;
+    await db.exec("begin");
+    const rolledBack = await submit();
+    await db.exec("rollback");
+    await asRole("postgres");
+    expect((await db.query("select id from public.instructor_questions where id = $1", [rolledBack])).rows).toHaveLength(0);
+    expect((await db.query<{ count: number }>("select count(*)::int count from net.requests")).rows[0].count).toBe(count);
+    await db.exec("set test.net_failure = 'yes'");
+    const preserved = await submit();
+    expect(await queue(preserved)).toMatchObject({ status: "pending", attempts: 0 });
+    await db.exec("set test.net_failure = 'no'");
+    expect((await db.query<{ count: number }>("select count(*)::int count from net.requests")).rows[0].count).toBe(count);
+    await db.exec("select linqs_private.dispatch_instructor_notifications()");
+    expect((await db.query<{ count: number }>("select count(*)::int count from net.requests")).rows[0].count).toBe(count + 1);
   });
 });

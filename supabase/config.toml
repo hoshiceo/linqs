@@ -7,3 +7,8 @@ enable_anonymous_sign_ins = false
 
 [auth.email]
 enabled = true
+
+# Only signed database dispatches are accepted by the handler. Student JWTs and
+# public API keys cannot authorize notification delivery.
+[functions.instructor-notifications]
+verify_jwt = false

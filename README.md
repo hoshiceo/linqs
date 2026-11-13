@@ -38,7 +38,7 @@ SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキ�
 ### 1. Supabase
 
 1. [Supabase](https://supabase.com/)でプロジェクトを作成します。
-2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql`、`004_server_exchange_writer.sql`、`005_knowledge_entries.sql`、`006_conversation_courses.sql`、`007_instructor_questions.sql`、`008_instructor_question_notifications.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。004は既存の履歴を残し、ログイン情報だけで回答を書き込める旧関数を非公開にします。005は追加知識・小ネタ・FAQを保存するテーブルを作成します。
+2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql`、`004_server_exchange_writer.sql`、`005_knowledge_entries.sql`、`006_conversation_courses.sql`、`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。004は既存の履歴を残し、ログイン情報だけで回答を書き込める旧関数を非公開にします。005は追加知識・小ネタ・FAQを保存するテーブルを作成します。
 3. Authenticationで **Email（メール・パスワード）** を有効にし、Anonymous Sign-Insは無効にします。Allow new users to sign upも無効にして、管理者が作成した共通アカウントだけを使います。
 4. プロジェクトURLとpublishable keyを `.env.local` に設定します。legacy anon keyでも利用できます。**アプリの実行にはservice_role / secret keyを使いません。** 共通アカウント作成・保存専用鍵の初回登録・教材登録にだけ、ローカルの管理者キーを使用します。
 
@@ -171,7 +171,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 回答の下の「講師に質問」から、確認したいことを2,000文字以内で入力して送信します。元の質問・AIの回答・コースをDBの保存済み履歴から取得し、質問に添えて受け付けます。サイドバーの「講師への質問」で受付内容と返信を確認できます。クラス共通アカウントのため、質問・返信はクラス全員で共有されます。送信前にも表示します。個人情報は入力しないでください。
 
-開発用DBに`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`を順に適用してください（006までの適用が必要です）。本番への適用・公開は通常のリリース手順で別途行います。受付先はSupabaseの`public.instructor_questions`です。メール通知を使わない場合、メールサービスの設定は不要です。返信はベストエフォートです。
+開発用DBに`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql`を順に適用してください（006までの適用が必要です）。009にはSupabaseの`pg_net`・`pg_cron`・Vaultが必要です。本番への適用・公開は通常のリリース手順で別途行います。受付先はSupabaseの`public.instructor_questions`です。メール通知を使わない場合、メールサービスの設定は不要です。返信はベストエフォートです。
 
 講師・管理者は対象プロジェクトのSupabase Table Editorで質問を確認し、`reply`列に返信を登録します。`replied_at`は自動設定され、受講者が一覧の「受付状況・返信を更新」を押すと表示されます。講師向けアプリ内管理画面や独立した講師ログインは含みません。管理者のSupabaseアカウントを受講者に共有しないでください。
 
@@ -181,16 +181,19 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 ### 講師へのメール通知
 
-新しい質問を受け付けると、`yamana@stargaz.design`へResend経由で通知します。宛先はサーバー側で固定し、受講者から変更できません。件名は「【Linqs】講師への質問が届きました」で、本文に受付ID・受付日時・コースID・会話タイトル・講師への質問・元の質問・AIの回答をプレーンテキストで記載します。受講者には送信前にメール通知への利用を表示します。通知メールへの返信はアプリに反映されず、従来どおりSupabaseの`reply`列に登録します。
+新しい質問を受け付けると、Supabase Edge Functionの`instructor-notifications`が`yamana@stargaz.design`へResend経由で通知します。宛先は関数内で固定し、受講者から変更できません。件名は「【Linqs】講師への質問が届きました」で、本文に受付ID・受付日時・コースID・会話タイトル・講師への質問・元の質問・AIの回答をプレーンテキストで記載します。受講者には送信前にメール通知への利用を表示します。通知メールへの返信はアプリに反映されず、従来どおりSupabaseの`reply`列に登録します。
 
 有効化の手順:
 
 1. Resendで送信元ドメインを認証し、送信に使うAPIキーを作成します。APIキーはチャットやGitへ貼り付けません。[Resendの送信API](https://resend.com/docs/api-reference/emails/send-email)
-2. `008_instructor_question_notifications.sql`を先に開発用DBで検証し、承認されたリリース時に本番DBへ適用します。過去の受付分は通知待ちに追加しません。
-3. Netlifyのproductionコンテキストに、`RESEND_API_KEY`・`INSTRUCTOR_NOTIFICATION_FROM`（認証した送信元アドレス）・`INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED=true`を設定し、再デプロイします。メールの3項目と既存の`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`・`CLASS_ACCOUNT_USER_ID`・`SUPABASE_EXCHANGE_WRITE_KEY`は、Next.jsと定期処理の両方から読めるようFunctionsスコープで利用可能にします。Supabase管理者キーは追加しません。
-4. NetlifyのFunctions画面で`instructor-notifications`がScheduledとして登録されていることを確認します。[Netlify Scheduled Functions](https://docs.netlify.com/build/functions/scheduled-functions/)
+2. `008_instructor_question_notifications.sql`・`009_instructor_edge_dispatch.sql`を先に開発用DBで検証し、承認されたリリース時に本番DBへ適用します。過去の受付分は通知待ちに追加しません。
+3. `supabase/functions/.env.example`を参考に、対象プロジェクトのEdge Function Secretsへ`LINQS_EXCHANGE_WRITE_KEY`（既存の保存専用鍵）・`LINQS_CLASS_ACCOUNT_USER_ID`・`LINQS_SUPABASE_PUBLISHABLE_KEY`・`RESEND_API_KEY`・`INSTRUCTOR_NOTIFICATION_FROM`・`INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED=true`を登録します。認証済み送信元の例は`Linqs <notifications@stargaz.design>`です。NetlifyへメールのAPIキーは登録しません。関数は管理者キーを使わず、公開キーと専用鍵で自クラスの通知だけを処理します。
+4. 管理者がSupabase Vaultへ`linqs_notification_project_url`（`https://<project-ref>.supabase.co`）と`linqs_notification_worker_key`（同じ保存専用鍵）を登録します。値はSQL Editorの履歴やGitへ貼らず、管理用の安全な経路から設定します。
+5. `supabase functions deploy instructor-notifications --project-ref <project-ref>`で関数を公開し、SupabaseのCron画面で`linqs-instructor-notifications`が5分間隔で登録されていることを確認します。[Edge Functionsの公開](https://supabase.com/docs/guides/functions/deploy)、[Supabaseでの定期実行](https://supabase.com/docs/guides/functions/schedule-functions)
 
-質問と通知待ちデータを同じDBトランザクションで保存し、受付後に送信します。メール障害や設定不足でも質問の受付は成功し、通知待ちデータが残ります。公開済みの本番デプロイでは5分ごとの定期処理で最大2件ずつ再試行します（1回の実行時間を30秒以内に収めるため）。ローカルの`next dev`と単体テストでは実送信を無効にし、テスト内のモックだけで検証します。開発へ本番のメールAPIキーをコピーしないでください。
+質問と通知待ちデータを同じDBトランザクションで保存し、DBトリガーが`pg_net`でEdge Functionを呼び出します。HTTPリクエストはコミット後に実行されます。メール障害・設定不足・HTTPリクエストの登録失敗でも質問の受付と通知待ちデータを残します。Supabase Cron（`pg_cron`）が5分ごとに最大2件ずつ再試行します。Netlifyの通知用関数・定期処理は使いません。ローカル検証ではテスト内の認証・メールAPIモックを使用し、開発へ本番キーをコピーしないでください。
+
+呼び出しは既存の専用鍵によるHMAC-SHA256署名と5分以内のタイムスタンプで検証します。`verify_jwt=false`はこの署名で認証するための設定で、署名のないリクエスト・受講者のJWT・公開キーだけでは通知を実行できません。署名には本文全体を含め、改ざんを拒否します。HTTPキューには専用鍵の平文を置きません。[関数の認証](https://supabase.com/docs/guides/functions/auth)
 
 送信済み状態をDBへ記録し、再送・同時実行・24時間以上経過した後の重複通知を防ぎます。送信結果の保存前に停止した場合に備え、同じ受付IDを[Resendの冪等キー](https://resend.com/docs/dashboard/emails/idempotency-keys)にも使います。最初に使用した送信元を保持し、講師が返信を登録しても通知本文は変わりません。メールAPIの受付完了を送信済みとし、受信箱への到着は保証しません。
 
@@ -208,7 +211,7 @@ order by q.created_at desc;
 1. このディレクトリを自分のGitリポジトリにpushします。
 2. Netlifyの **Add new project → Import an existing project** から接続します。
 3. `netlify.toml` がビルドコマンド `npm run build:checked`、公開ディレクトリ `.next`、Node 22を設定します。NetlifyのNext.jsアダプターは自動検出されます。静的HTMLへのexportは使用しません。
-4. NetlifyのEnvironment variablesに `.env.example` の基本6項目をproductionコンテキストで設定します。メール通知を使う場合は前節の3項目も設定します。Geminiキーと保存専用鍵はFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
+4. NetlifyのEnvironment variablesに `.env.example` の6項目をproductionコンテキストで設定します。メール通知の設定はSupabase Edge Function Secretsで管理します。Geminiキーと保存専用鍵はFunctionsの実行時にも利用できるスコープにしてください。`NEXT_PUBLIC_`の2項目はビルド時にも必要です。
 5. Deployを実行します。環境変数を変更した場合も再デプロイが必要です。
 6. 公開URLで質問・追加質問・履歴・保存・削除を確認します。
 
