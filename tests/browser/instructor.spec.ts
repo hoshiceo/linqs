@@ -25,6 +25,7 @@ test("send a question from an AI answer, then read its receipt and instructor re
   await page.getByRole("button", { name: "講師に質問", exact: true }).click();
   const card = page.getByRole("region", { name: "この回答について講師に質問" });
   await expect(card).toContainText("質問と返信はクラス全員で共有されます");
+  await expect(card).toContainText("質問とAIの回答は講師へのメール通知にも使用します");
   const submit = card.getByRole("button", { name: "この内容で講師に質問する" });
   await expect(submit).toBeDisabled();
   await card.getByText("講師に共有する質問とAIの回答", { exact: true }).click();

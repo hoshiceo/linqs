@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getUser: vi.fn(), rpc: vi.fn(), from: vi.fn(), list: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getUser: vi.fn(), rpc: vi.fn(), from: vi.fn(), list: vi.fn(), notify: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: { getUser: mocks.getUser }, rpc: mocks.rpc, from: mocks.from }) }));
+vi.mock("@/lib/instructor-notifications", () => ({ sendInstructorNotifications: mocks.notify }));
 import { GET, POST } from "../src/app/api/instructor-questions/route";
 const id = "11111111-1111-4111-8111-111111111111";
 function request(body = {}, authorization = "Bearer token") {
@@ -19,6 +20,7 @@ describe("Instructor questions API", () => {
     const query = { select: () => query, order: () => query, limit: mocks.list };
     mocks.from.mockReturnValue(query);
     mocks.list.mockResolvedValue({ data: [], error: null });
+    mocks.notify.mockResolvedValue(undefined);
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
@@ -29,6 +31,7 @@ describe("Instructor questions API", () => {
     expect((await POST(request())).status).toBe(403);
     expect((await GET(request())).status).toBe(403);
     expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
   it("validates size, source and malformed input before saving", async () => {
     for (const body of [{ question: " " }, { question: "あ".repeat(2001) }, { messageIndex: -1 }, { conversationId: "bad" }, { contextHash: "bad" }]) {
@@ -37,12 +40,15 @@ describe("Instructor questions API", () => {
     expect((await POST(request({ question: "a".repeat(17000) }))).status).toBe(413);
     expect((await POST(new Request("http://localhost/api", { method: "POST", headers: { Authorization: "Bearer token" }, body: "{" }))).status).toBe(400);
     expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
   it("saves through the server writer without trusting supplied answer or reply", async () => {
     const response = await POST(request({ question: "  具体例を教えてください。  ", ai_answer: "forged", reply: "forged" }));
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith("submit_instructor_question", { p_conversation_id: id, p_message_index: 1, p_question: "具体例を教えてください。", p_context_hash: "a".repeat(64), p_write_key: "a".repeat(64) });
     expect(await response.text()).not.toContain("p_write_key");
+    expect(mocks.notify).toHaveBeenCalledExactlyOnceWith(id);
+    expect(mocks.rpc.mock.invocationCallOrder[0]).toBeLessThan(mocks.notify.mock.invocationCallOrder[0]);
   });
   it("reports missing sources, changed exchanges, quota and storage failures", async () => {
     for (const [error, status] of [[{ code: "P0002" }, 404], [{ code: "40001" }, 409], [{ message: "Instructor question limit" }, 429], [{ code: "42P01" }, 503]] as const) {
@@ -53,6 +59,7 @@ describe("Instructor questions API", () => {
     mocks.rpc.mockClear();
     expect((await POST(request())).status).toBe(503);
     expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
   it("normalizes a composite row returned as a PostgREST array", async () => {
     mocks.rpc.mockResolvedValue({ data: [{ id, question: "受付した質問" }], error: null });

@@ -7,6 +7,6 @@
   NEXT_TELEMETRY_DISABLED = "1"
 
 # Netlify detects Next.js and installs its OpenNext adapter automatically.
-# Set the six variables from .env.example for the production context only.
+# Set application and optional email variables from .env.example in production only.
 # Production branch: main. Disable branch deploys and Deploy Previews in project settings.
 # Develop and review dev locally at http://localhost:3000.
