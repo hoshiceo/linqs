@@ -23,6 +23,8 @@ must not be included. See ../THIRD_PARTY_NOTICES.md for bundled-material details
   Shipping a compiled bundle or container needs its own third-party notice/source
   review as described in THIRD_PARTY_NOTICES.md.
 
+Setup and operational instructions are in [SETUP.md](SETUP.md).
+
 ## Existing deployments and migration 010
 
 This preparation does not change production secrets, databases, recipients, or
