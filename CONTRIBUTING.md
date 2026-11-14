@@ -13,7 +13,7 @@ Preserve third-party licenses and attribution for material you add.
 3. Keep changes focused. Explain the resulting behavior, validation, and any
    migration or configuration changes in the PR.
 
-Use Node.js 22+ and `npm ci`. Follow the README to configure a separate development
+Use Node.js 22+ and `npm ci`. Follow [the setup guide](docs/SETUP.md) to configure a separate development
 Supabase/Gemini project. Never use a live classroom account or production history
 for tests. Browser tests mock authentication, model calls, and email delivery;
 database tests run the SQL in PGlite. Use fictitious names and reserved
@@ -29,7 +29,7 @@ npm run security:secrets
 ```
 
 Run meaningful browser tests for changed interactions, using the isolated build
-and dummy public settings documented in README.md. Minor cosmetic changes follow
+and dummy public settings documented in docs/SETUP.md. Minor cosmetic changes follow
 AGENTS.md. Test notification delivery only with a mocked provider; never send a
 test message to an actual instructor. `tests/edge-runtime-smoke.mjs` can run under
 Deno with `--allow-net=127.0.0.1`, using an automatically selected local port.
