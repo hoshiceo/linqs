@@ -1,0 +1,31 @@
+name: 不具合報告
+description: 架空のデータで再現できる不具合を報告します。
+body:
+  - type: markdown
+    attributes:
+      value: |
+        APIキー、パスワード、実際の生徒の質問、個人名、教科書の原文や本番画面を掲載しないでください。
+        脆弱性は公開Issueに書かず、SECURITY.mdの非公開報告手順をご利用ください。
+  - type: input
+    id: revision
+    attributes:
+      label: バージョンまたはコミット
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 再現手順
+      description: 架空の入力と開発環境で再現できる手順を記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する結果と実際の結果
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS・ブラウザ・Node.jsバージョン

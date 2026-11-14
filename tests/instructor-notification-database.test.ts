@@ -88,6 +88,7 @@ describe("Instructor notification outbox security and delivery lifecycle", () =>
       end; $$;`);
     await db.exec(readFileSync(new URL("../supabase/migrations/009_instructor_edge_dispatch.sql", import.meta.url), "utf8")
       .replace(/^create extension if not exists .*;$/gm, ""));
+    await db.exec(readFileSync(new URL("../supabase/migrations/010_notification_recipients.sql", import.meta.url), "utf8"));
     questionId = await submit();
   });
   afterAll(async () => { await db.close(); });
@@ -172,6 +173,33 @@ describe("Instructor notification outbox security and delivery lifecycle", () =>
     expect(await queue(failing)).toMatchObject({ status: "needs_review", attempts: 12 });
     await asRole("anon", "");
     expect(await claim(failing)).toBeNull();
+  });
+  it("pins the recipient on the first claim and preserves it across configuration changes", async () => {
+    const id = await submit();
+    await asRole("anon", "");
+    const invoke = async (recipient: string, key = writer) => (await db.query<{ job: (Job & { recipient: string }) | null }>(
+      "select public.claim_instructor_notification_for_recipient($1,$2,$3,$4,$5) job", [alice, key, "mail@example.com", recipient, id],
+    )).rows[0].job;
+    await expect(invoke("teacher@example.com", bobWriter)).rejects.toThrow("Server writer required");
+    for (const recipient of ["", "invalid", "teacher@example.com,other@example.com", "teacher@example.com\nBcc:other@example.com", "teacher@exa\tmple.com"]) {
+      await expect(invoke(recipient)).rejects.toThrow("Invalid notification recipient");
+    }
+    const first = (await invoke("teacher@example.com"))!;
+    expect(first.recipient).toBe("teacher@example.com");
+    expect(await finish(id, first.attemptId, null)).toBe(true);
+    await due(id);
+    const retry = (await invoke("different@example.com"))!;
+    expect(retry.recipient).toBe("teacher@example.com");
+    expect(await finish(id, retry.attemptId, "recipient-test-receipt")).toBe(true);
+  });
+  it("holds older attempted jobs for review instead of guessing or redirecting their recipient", async () => {
+    const id = await submit();
+    await asRole("anon", "");
+    expect(await claim(id)).not.toBeNull(); // Legacy worker never stored a recipient.
+    await due(id);
+    const result = await db.query<{ job: Job | null }>("select public.claim_instructor_notification_for_recipient($1,$2,$3,$4,$5) job", [alice, writer, "mail@example.com", "new@example.com", id]);
+    expect(result.rows[0].job).toBeNull();
+    expect(await queue(id)).toMatchObject({ status: "needs_review" });
   });
   it("schedules signed Edge Function dispatches and keeps secrets out of the HTTP queue", async () => {
     await asRole("postgres");

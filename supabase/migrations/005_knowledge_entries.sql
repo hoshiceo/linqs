@@ -13,8 +13,8 @@ create table public.knowledge_entries (
 );
 
 comment on table public.knowledge_entries is '全利用者共通の追加知識・小ネタ・FAQ。回答への参照処理は別途必要。';
-comment on column public.knowledge_entries.question is '例：理恵子先生の好きな食べ物は？';
-comment on column public.knowledge_entries.answer is '例：想夫恋の焼きそばです。';
+comment on column public.knowledge_entries.question is '例：サンプル先生の好きな食べ物は？';
+comment on column public.knowledge_entries.answer is '例：カレーです。';
 comment on column public.knowledge_entries.is_active is 'falseにすると生徒からの読み取り対象外';
 
 alter table public.knowledge_entries enable row level security;

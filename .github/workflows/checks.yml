@@ -53,6 +53,8 @@ jobs:
       - name: Scan Git history and publication candidates for secrets
         run: npm run security:secrets
       - run: npm ci
+      - name: Check dependency license inventory
+        run: npm run licenses:check
       - name: Check known dependency vulnerabilities
         run: npm run security:audit
       - name: Type check, API and database tests, production build

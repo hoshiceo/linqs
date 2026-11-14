@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { knowledgeInstruction, knowledgeTerms, retrieveKnowledge, type KnowledgeEntry } from "../src/lib/knowledge";
 
-const entry: KnowledgeEntry = { id: "11111111-1111-4111-8111-111111111111", question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。", is_active: true };
+const entry: KnowledgeEntry = { id: "11111111-1111-4111-8111-111111111111", question: "サンプル先生の好きな食べ物は？", answer: "カレーです。", is_active: true };
 function client(rows: KnowledgeEntry[] = [entry]) {
   const query = { select: vi.fn(), eq: vi.fn(), or: vi.fn(), order: vi.fn(), limit: vi.fn(), abortSignal: vi.fn().mockResolvedValue({ data: rows, error: null }) };
   for (const name of ["select", "eq", "or", "order", "limit"] as const) query[name].mockReturnValue(query);
@@ -11,12 +11,12 @@ function client(rows: KnowledgeEntry[] = [entry]) {
 }
 
 describe("Shared knowledge retrieval", () => {
-  it.each(["理恵子先生の好きな食べ物は？", "理恵子先生の好物を教えてください"])("finds the registered fact for %s", async question => {
+  it.each(["サンプル先生の好きな食べ物は？", "サンプル先生の好物を教えてください"])("finds the registered fact for %s", async question => {
     const db = client();
     expect(await retrieveKnowledge(db.db, question, [])).toEqual([entry]);
     expect(db.from).toHaveBeenCalledWith("knowledge_entries");
     expect(db.eq).toHaveBeenCalledWith("is_active", true);
-    expect(db.or.mock.calls[0][0]).toContain("question.ilike.*理恵子*");
+    expect(db.or.mock.calls[0][0]).toContain("question.ilike.*サンプル*");
     expect(db.abortSignal.mock.calls[0][0]).toBeInstanceOf(AbortSignal);
   });
 
@@ -24,7 +24,7 @@ describe("Shared knowledge retrieval", () => {
     const db = client();
     expect(await retrieveKnowledge(db.db, "それについて教えてください", [])).toEqual([]);
     expect(db.from).not.toHaveBeenCalled();
-    const terms = knowledgeTerms('理恵子）,is_active.eq.false,%_*"\\ 好物');
+    const terms = knowledgeTerms('サンプル）,is_active.eq.false,%_*"\\ 好物');
     expect(terms.length).toBeGreaterThan(0);
     expect(terms.every(term => /^[\p{L}\p{N}]{2,40}$/u.test(term))).toBe(true);
   });
@@ -36,7 +36,7 @@ describe("Shared knowledge retrieval", () => {
       { role: "user", content: "もっと教えて" },
     ]);
     expect(result).toEqual([entry]);
-    expect(db.or.mock.calls[0][0]).toContain("理恵子");
+    expect(db.or.mock.calls[0][0]).toContain("サンプル");
     expect(db.or.mock.calls[0][0]).not.toContain("田中");
     expect(db.or.mock.calls[0][0]).not.toContain("寿司");
   });

@@ -73,15 +73,15 @@ test("course navigation starts fresh questions while keeping shared history acce
 });
 
 test("a shared knowledge answer appears in chat and remains in saved history", async ({ page }) => {
-  const answer = "理恵子先生の好きな食べ物は、想夫恋の焼きそばです。";
+  const answer = "サンプル先生の好きな食べ物は、カレーです。";
   await login(page, { answerText: answer });
-  await page.getByRole("textbox", { name: "質問を入力" }).fill("理恵子先生の好きな食べ物は？");
+  await page.getByRole("textbox", { name: "質問を入力" }).fill("サンプル先生の好きな食べ物は？");
   await page.getByRole("button", { name: "質問を送信" }).click();
   await expect(page.locator(".markdown")).toHaveText(answer);
   await expect(page.locator(".markdown")).not.toContainText("教科書");
   await page.screenshot({ path: `test-results/shared-knowledge-${test.info().project.name}.png` });
   await navigate(page, "質問を検索");
-  await page.getByRole("button", { name: /理恵子先生の好きな食べ物は？.*1回の質問/ }).click();
+  await page.getByRole("button", { name: /サンプル先生の好きな食べ物は？.*1回の質問/ }).click();
   await expect(page.locator(".markdown")).toHaveText(answer);
 });
 

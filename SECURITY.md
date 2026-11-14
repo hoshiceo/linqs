@@ -27,9 +27,21 @@ accounts without explicit authorization.
   this narrowly scoped server key; administrator credentials stay local.
 - Keep development and production credentials separate. Never commit `.env*`,
   `.local/`, classroom login details or private textbooks.
-- The shared class account intentionally shares history, bookmarks and deletion
-  permissions. It does not provide privacy between class members.
+- The shared class account intentionally shares history and deletion
+  permissions. It does not provide privacy between class members. Bookmarks stay local to each browser.
 
 If a secret is exposed, revoke or rotate it first, then investigate its usage and
 remove it from publication candidates and Git history. Removing a file alone does
 not invalidate a leaked credential.
+
+## Notifications and public releases
+
+Notification recipients must be set by the administrator using
+`INSTRUCTOR_NOTIFICATION_TO`. Missing or malformed configuration must not claim
+outbox jobs or fall back to a real installation's address. Apply migration 010
+before the updated worker; attempted legacy jobs without a pinned recipient need
+manual provider-history review. Do not send test messages to a real instructor.
+
+Secret scanning does not detect all personal data, screenshot contents, or license
+issues. Follow `docs/PUBLIC_RELEASE.md` before publishing Git history or Actions
+logs/artifacts. Changing the latest files does not sanitize earlier revisions.
