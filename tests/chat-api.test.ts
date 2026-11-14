@@ -148,28 +148,28 @@ describe("Chat API boundary", () => {
     expect((await result.json()).answer).not.toContain("参照した公式資料");
   });
   it("passes shared facts to Gemini and saves their answer even when no textbook excerpt matches", async () => {
-    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。", is_active: true }], error: null });
+    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "サンプル先生の好きな食べ物は？", answer: "カレーです。", is_active: true }], error: null });
     mocks.rpc.mockImplementation((name: string) => Promise.resolve({ data:
       name === "reserve_question_exchange" ? ticket : name === "textbook_catalog" ? [{ filename: "Excel＿VBA.pdf", page_count: 52, source_format: "pdf" }] :
       name === "match_textbook_chunks" ? [] : id, error: null }));
     mocks.generateContent.mockImplementation(async ({ contents, config }) => {
       const context = JSON.stringify(contents.at(-1).parts);
-      expect(context).toContain("想夫恋の焼きそばです。");
+      expect(context).toContain("カレーです。");
       expect(context).toContain("教科書とは別の参照元");
       expect(config.systemInstruction).toContain("教科書の検索結果に一致がなくても追加知識を使って答える");
-      return modelReply("理恵子先生の好きな食べ物は、想夫恋の焼きそばです。");
+      return modelReply("サンプル先生の好きな食べ物は、カレーです。");
     });
-    const response = await POST(request({ subject: undefined, message: "理恵子先生の好きな食べ物は？" }));
+    const response = await POST(request({ subject: undefined, message: "サンプル先生の好きな食べ物は？" }));
     expect(response.status).toBe(200);
     const result = await response.json();
-    expect(result.answer).toBe("理恵子先生の好きな食べ物は、想夫恋の焼きそばです。");
+    expect(result.answer).toBe("サンプル先生の好きな食べ物は、カレーです。");
     expect(result.answer).not.toContain("教科書");
     expect(mocks.rpc.mock.calls.at(-1)?.[1].p_answer).toBe(result.answer);
     expect(mocks.from).toHaveBeenCalledWith("knowledge_entries");
   });
   it("stops generation when shared-knowledge retrieval fails instead of claiming the fact is unknown", async () => {
     mocks.knowledgeLookup.mockResolvedValue({ data: null, error: { message: "private database payload" } });
-    const response = await POST(request({ subject: undefined, message: "理恵子先生の好きな食べ物は？" }));
+    const response = await POST(request({ subject: undefined, message: "サンプル先生の好きな食べ物は？" }));
     expect(response.status).toBe(503);
     const body = await response.text();
     expect(body).toContain("追加知識を検索できませんでした");
@@ -184,18 +184,18 @@ describe("Chat API boundary", () => {
       if (table === "conversations") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id }, error: null }) }) }) };
       return { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [
         { role: "assistant", content: "現在提供されている教材に好きな食べ物の情報はありません。" },
-        { role: "user", content: "理恵子先生の好きな食べ物は？" },
+        { role: "user", content: "サンプル先生の好きな食べ物は？" },
       ], error: null }) }) }) }) };
     });
-    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。", is_active: true }], error: null });
-    mocks.generateContent.mockResolvedValue(modelReply("理恵子先生の好きな食べ物は、想夫恋の焼きそばです。"));
+    mocks.knowledgeLookup.mockResolvedValue({ data: [{ id, question: "サンプル先生の好きな食べ物は？", answer: "カレーです。", is_active: true }], error: null });
+    mocks.generateContent.mockResolvedValue(modelReply("サンプル先生の好きな食べ物は、カレーです。"));
     const response = await POST(request({ conversationId: id, subject: undefined, message: "それをもう一度教えて" }));
     expect(response.status).toBe(200);
     const contents = mocks.generateContent.mock.calls[0][0].contents;
     expect(JSON.parse(contents[0].parts[0].text).conversation_history[1].content).toContain("情報はありません");
-    expect(JSON.stringify(contents.at(-1).parts)).toContain("想夫恋の焼きそばです。");
+    expect(JSON.stringify(contents.at(-1).parts)).toContain("カレーです。");
     expect(JSON.stringify(contents.at(-1).parts)).toContain("今回取得した追加知識に基づいて答え直す");
-    expect((await response.json()).answer).toContain("想夫恋の焼きそば");
+    expect((await response.json()).answer).toContain("カレー");
   });
   it("does not generate or save when the saved reference index cannot be loaded", async () => {
     vi.spyOn(vbaSearch, "retrieveVbaReferences").mockRejectedValueOnce(new (await import("../src/lib/server")).ApiError(503, "保存済みのVBA公式資料を検索できませんでした。"));

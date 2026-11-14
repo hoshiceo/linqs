@@ -38,7 +38,7 @@ SupabaseのURL・publishable key・共通ユーザーIDが揃うと、Geminiキ�
 ### 1. Supabase
 
 1. [Supabase](https://supabase.com/)でプロジェクトを作成します。
-2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql`、`004_server_exchange_writer.sql`、`005_knowledge_entries.sql`、`006_conversation_courses.sql`、`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。004は既存の履歴を残し、ログイン情報だけで回答を書き込める旧関数を非公開にします。005は追加知識・小ネタ・FAQを保存するテーブルを作成します。
+2. SQL Editorで `supabase/migrations/001_learning_assistant.sql`、`002_vocational_subjects.sql`、`003_textbook_search.sql`、`004_server_exchange_writer.sql`、`005_knowledge_entries.sql`、`006_conversation_courses.sql`、`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql`、`010_notification_recipients.sql` の順に一度ずつ実行します。既存のプロジェクトには未適用のマイグレーションだけ実行します。002は以前の教科の履歴を「すべて」に分類し直し、質問・回答を残します。003は教科書検索用のテーブルと関数を作成し、教材を未登録の状態でも質問APIに必要です。004は既存の履歴を残し、ログイン情報だけで回答を書き込める旧関数を非公開にします。005は追加知識・小ネタ・FAQを保存するテーブルを作成します。
 3. Authenticationで **Email（メール・パスワード）** を有効にし、Anonymous Sign-Insは無効にします。Allow new users to sign upも無効にして、管理者が作成した共通アカウントだけを使います。
 4. プロジェクトURLとpublishable keyを `.env.local` に設定します。legacy anon keyでも利用できます。**アプリの実行にはservice_role / secret keyを使いません。** 共通アカウント作成・保存専用鍵の初回登録・教材登録にだけ、ローカルの管理者キーを使用します。
 
@@ -56,7 +56,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 
 Supabaseプロジェクト作成後に、次の手順で1つのアカウントを発行します。新しい環境では、Supabaseプロジェクトに共通アカウントを作成し、ユーザーIDを設定してください。
 
-1. `.env.setup.example` を `.env.setup` にコピーします。この作業環境では希望のメールアドレスだけ設定した `.env.setup` を用意済みです。上書きせず、そのファイルを編集してください。
+1. `.env.setup.example` を `.env.setup` にコピーします。既存の`.env.setup`がある場合は上書きせず編集してください。
 2. Supabase URLと、プロジェクトの**secret key（legacy service_role keyも可）**を `.env.setup` に設定します。このファイルはGit対象外で、Next.jsの実行環境には読み込ませません。
 3. `CLASS_ACCOUNT_EMAIL` に共通メールアドレスを指定します。パスワードは自動生成されます。自分で設定する場合は `CLASS_ACCOUNT_PASSWORD` に12文字以上を指定します。
 4. Node 22以上で `npm run account:create` を実行します。確認メールは送らず、メール確認済みの共通アカウントを管理者APIで作成します。
@@ -157,7 +157,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 | `is_active` | 有効・無効。初期値は有効 |
 | `created_at` / `updated_at` | 作成日時・更新日時。更新日時は自動更新 |
 
-管理者が対象プロジェクトのSupabase SQL EditorまたはTable Editorから登録・編集します。全利用者共通の情報として保存し、質問が重複しない制約があります。例えば `question` に「理恵子先生の好きな食べ物は？」、`answer` に「想夫恋の焼きそばです。」を指定します。この例はマイグレーションで自動登録しません。
+管理者が対象プロジェクトのSupabase SQL EditorまたはTable Editorから登録・編集します。全利用者共通の情報として保存し、質問が重複しない制約があります。例えば、架空のサンプルとして `question` に「サンプル先生の好きな食べ物は？」、`answer` に「カレーです。」を指定します。この例はマイグレーションで自動登録しません。
 
 ログイン済みの全利用者には、同じ `is_active = true` の行を読む権限を与えます。クラスやアカウントへの紐づけはなく、アカウントを削除しても追加知識は残ります。登録・編集・削除は管理者用の権限で行い、匿名ユーザーには公開しません。権限設計は[SupabaseのRLSガイド](https://supabase.com/docs/guides/database/postgres/row-level-security)に沿っています。
 
@@ -171,7 +171,7 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 回答の下の「講師に質問」から、確認したいことを2,000文字以内で入力して送信します。元の質問・AIの回答・コースをDBの保存済み履歴から取得し、質問に添えて受け付けます。サイドバーの「講師への質問」で受付内容と返信を確認できます。クラス共通アカウントのため、質問・返信はクラス全員で共有されます。送信前にも表示します。個人情報は入力しないでください。
 
-開発用DBに`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql`を順に適用してください（006までの適用が必要です）。009にはSupabaseの`pg_net`・`pg_cron`・Vaultが必要です。本番への適用・公開は通常のリリース手順で別途行います。受付先はSupabaseの`public.instructor_questions`です。メール通知を使わない場合、メールサービスの設定は不要です。返信はベストエフォートです。
+開発用DBに`007_instructor_questions.sql`、`008_instructor_question_notifications.sql`、`009_instructor_edge_dispatch.sql`、`010_notification_recipients.sql`を順に適用してください（006までの適用が必要です）。009にはSupabaseの`pg_net`・`pg_cron`・Vaultが必要です。本番への適用・公開は通常のリリース手順で別途行います。受付先はSupabaseの`public.instructor_questions`です。メール通知を使わない場合、メールサービスの設定は不要です。返信はベストエフォートです。
 
 講師・管理者は対象プロジェクトのSupabase Table Editorで質問を確認し、`reply`列に返信を登録します。`replied_at`は自動設定され、受講者が一覧の「受付状況・返信を更新」を押すと表示されます。講師向けアプリ内管理画面や独立した講師ログインは含みません。管理者のSupabaseアカウントを受講者に共有しないでください。
 
@@ -181,13 +181,13 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 ### 講師へのメール通知
 
-新しい質問を受け付けると、Supabase Edge Functionの`instructor-notifications`が`yamana@stargaz.design`へResend経由で通知します。宛先は関数内で固定し、受講者から変更できません。件名は「【Linqs】講師への質問が届きました」で、本文に受付ID・受付日時・コースID・会話タイトル・講師への質問・元の質問・AIの回答をプレーンテキストで記載します。受講者には送信前にメール通知への利用を表示します。通知メールへの返信はアプリに反映されず、従来どおりSupabaseの`reply`列に登録します。
+新しい質問を受け付けると、Supabase Edge Functionの`instructor-notifications`が管理者の設定した`INSTRUCTOR_NOTIFICATION_TO`へResend経由で通知します。宛先はEdge Functionの設定のみで指定し、受講者から変更できません。未設定・不正な形式では通知待ちデータを取得せず停止し、既定の宛先への送信は行いません。件名は「【Linqs】講師への質問が届きました」で、本文に受付ID・受付日時・コースID・会話タイトル・講師への質問・元の質問・AIの回答をプレーンテキストで記載します。受講者には送信前にメール通知への利用を表示します。通知メールへの返信はアプリに反映されず、従来どおりSupabaseの`reply`列に登録します。
 
 有効化の手順:
 
 1. Resendで送信元ドメインを認証し、送信に使うAPIキーを作成します。APIキーはチャットやGitへ貼り付けません。[Resendの送信API](https://resend.com/docs/api-reference/emails/send-email)
-2. `008_instructor_question_notifications.sql`・`009_instructor_edge_dispatch.sql`を先に開発用DBで検証し、承認されたリリース時に本番DBへ適用します。過去の受付分は通知待ちに追加しません。
-3. `supabase/functions/.env.example`を参考に、対象プロジェクトのEdge Function Secretsへ`LINQS_EXCHANGE_WRITE_KEY`（既存の保存専用鍵）・`LINQS_CLASS_ACCOUNT_USER_ID`・`LINQS_SUPABASE_PUBLISHABLE_KEY`・`RESEND_API_KEY`・`INSTRUCTOR_NOTIFICATION_FROM`・`INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED=true`を登録します。認証済み送信元の例は`Linqs <notifications@stargaz.design>`です。NetlifyへメールのAPIキーは登録しません。関数は管理者キーを使わず、公開キーと専用鍵で自クラスの通知だけを処理します。
+2. `008_instructor_question_notifications.sql`・`009_instructor_edge_dispatch.sql`・`010_notification_recipients.sql`を先に開発用DBで検証し、承認されたリリース時に本番DBへ適用します。過去の受付分は通知待ちに追加しません。
+3. `supabase/functions/.env.example`を参考に、対象プロジェクトのEdge Function Secretsへ`LINQS_EXCHANGE_WRITE_KEY`（既存の保存専用鍵）・`LINQS_CLASS_ACCOUNT_USER_ID`・`LINQS_SUPABASE_PUBLISHABLE_KEY`・`RESEND_API_KEY`・`INSTRUCTOR_NOTIFICATION_FROM`・`INSTRUCTOR_NOTIFICATION_TO`・`INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED=true`を登録します。認証済み送信元の例は`Linqs <notifications@example.com>`（送信元）と`teacher@example.com`（宛先、実運用時は管理者のアドレスに変更）です。NetlifyへメールのAPIキーは登録しません。関数は管理者キーを使わず、公開キーと専用鍵で自クラスの通知だけを処理します。
 4. 管理者がSupabase Vaultへ`linqs_notification_project_url`（`https://<project-ref>.supabase.co`）と`linqs_notification_worker_key`（同じ保存専用鍵）を登録します。値はSQL Editorの履歴やGitへ貼らず、管理用の安全な経路から設定します。
 5. Supabase CLI 3では`supabase functions deploy instructor-notifications --remote=<project-ref> --use-api`で関数を公開し、SupabaseのCron画面で`linqs-instructor-notifications`が5分間隔で登録されていることを確認します。[Edge Functionsの公開](https://supabase.com/docs/guides/functions/deploy)、[Supabaseでの定期実行](https://supabase.com/docs/guides/functions/schedule-functions)
 
@@ -195,7 +195,9 @@ Netlifyの実行環境で教材の抽出処理は不要です。一度登録し�
 
 呼び出しは既存の専用鍵によるHMAC-SHA256署名と5分以内のタイムスタンプで検証します。`verify_jwt=false`はこの署名で認証するための設定で、署名のないリクエスト・受講者のJWT・公開キーだけでは通知を実行できません。署名には本文全体を含め、改ざんを拒否します。HTTPキューには専用鍵の平文を置きません。[関数の認証](https://supabase.com/docs/guides/functions/auth)
 
-送信済み状態をDBへ記録し、再送・同時実行・24時間以上経過した後の重複通知を防ぎます。送信結果の保存前に停止した場合に備え、同じ受付IDを[Resendの冪等キー](https://resend.com/docs/dashboard/emails/idempotency-keys)にも使います。最初に使用した送信元を保持し、講師が返信を登録しても通知本文は変わりません。メールAPIの受付完了を送信済みとし、受信箱への到着は保証しません。
+送信済み状態をDBへ記録し、再送・同時実行・24時間以上経過した後の重複通知を防ぎます。送信結果の保存前に停止した場合に備え、同じ受付IDを[Resendの冪等キー](https://resend.com/docs/dashboard/emails/idempotency-keys)にも使います。最初に使用した送信元と宛先を通知ごとに保持し、後から環境変数や講師の返信を変更しても再試行時の宛先・本文は変わりません。メールAPIの受付完了を送信済みとし、受信箱への到着は保証しません。
+
+宛先設定を導入する既存環境では、010を適用してから新しいEdge Functionを公開します。010の適用前に実際の送信試行があり、宛先が保存されていない未完了の通知は、新ワーカーで`needs_review`へ移します。宛先や送信済みかどうかを推測して再送せず、管理者がメールサービスの履歴と照合してください。既に送信済みの通知や過去の質問を自動で再通知しません。新しいRPCが未適用の場合も旧RPCや固定宛先へフォールバックしません。本番への010適用・宛先登録・Edge Function公開は、リリース承認後に実施します。
 
 失敗は最大12回、最初の送信試行から23時間まで再試行し、その後は`needs_review`として自動送信を止めます。Resendの冪等キーが24時間で失効した後の不確かな再送を避けるためです。管理者はSQL Editorで次のクエリから状態を確認できます。`needs_review`はResend側の送信履歴を照合し、送信有無を確認してから対応してください。状態やキーは受講者へ公開しません。
 
@@ -286,6 +288,10 @@ DBテストはPGliteのPostgreSQLエンジンで実際のマイグレーショ�
 Linqs本体のソースコードには[MITライセンス](LICENSE)を用意しています。同梱するMicrosoft公式資料は別ライセンスです。`data/vba-reference/LICENSE`（CC BY 4.0）と`LICENSE-CODE`（MIT）、出典情報を保持してください。授業の教科書・生徒の履歴・秘密情報は公開物に含めません。
 
 公開前にGitHubのSecret scanning・Push protection・Private vulnerability reportingを利用可能な範囲で有効にしてください。[SECURITY.md](SECURITY.md)に報告方法と運用方針を記載しています。GitHub Actionsの`Quality checks`には全Git履歴と公開予定ファイルの秘密情報スキャン、低重大度を含む依存関係の脆弱性チェックを組み込みます。Dependabotは`dev`向けに更新PRを作成し、本番への反映は従来どおり承認後に行います。
+
+公開準備・既存Git履歴とActionsの取り扱いは[公開手順](docs/PUBLIC_RELEASE.md)、第三者素材・依存ライブラリの扱いは[第三者ライセンス通知](THIRD_PARTY_NOTICES.md)、変更提案の方法は[貢献手順](CONTRIBUTING.md)にまとめています。依存関係のライセンス一覧は`npm run licenses:update`で更新し、`npm run licenses:check`でlockfileとの整合性を確認します。
+
+公開対象はアプリのソースコードです。Gemini・Supabase・Netlify・任意のメールサービスは各利用者が自分の契約・キー・費用で設定します。教科書・質問履歴・本番設定は同梱しません。`package.json`の`private: true`はnpmへの誤公開を防ぐ設定で、GitHubでのソース公開を禁止するものではありません。
 
 ## 構成
 

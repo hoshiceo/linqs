@@ -5,7 +5,7 @@ import { createNotificationHandler } from "../supabase/functions/instructor-noti
 const id = "11111111-1111-4111-8111-111111111111";
 const writer = "a".repeat(64);
 const job = {
-  attemptId: "22222222-2222-4222-8222-222222222222", sender: "Linqs <notifications@example.com>",
+  attemptId: "22222222-2222-4222-8222-222222222222", sender: "Linqs <notifications@example.com>", recipient: "teacher@example.com",
   question: { id, course_id: "website-production", conversation_title: "条件式を知りたい", original_question: "IF関数とは？", ai_answer: "<script>学生の内容</script>\nAIの回答", question: "具体例を教えて", created_at: "2026-11-13T00:00:00+00:00" },
 };
 let config: Record<string, string>;
@@ -25,10 +25,10 @@ describe("Supabase Edge Function instructor notifications", () => {
     config = {
       LINQS_EXCHANGE_WRITE_KEY: writer, LINQS_CLASS_ACCOUNT_USER_ID: id,
       LINQS_SUPABASE_PUBLISHABLE_KEY: "test-public-key", SUPABASE_URL: "https://example.supabase.co",
-      INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED: "true", RESEND_API_KEY: "test-mail-key", INSTRUCTOR_NOTIFICATION_FROM: "new-sender@example.com",
+      INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED: "true", RESEND_API_KEY: "test-mail-key", INSTRUCTOR_NOTIFICATION_FROM: "new-sender@example.com", INSTRUCTOR_NOTIFICATION_TO: "teacher@example.com",
     };
     send = vi.fn<typeof fetch>().mockImplementation(async url => {
-      if (String(url).endsWith("claim_instructor_notification")) return Response.json(job);
+      if (String(url).endsWith("claim_instructor_notification_for_recipient")) return Response.json(job);
       if (String(url).endsWith("finish_instructor_notification")) return Response.json(true);
       return Response.json({ id: "provider-receipt" });
     });
@@ -53,16 +53,16 @@ describe("Supabase Edge Function instructor notifications", () => {
     for (const body of ["{", "null", "[]", '{"questionId":"bad"}']) expect((await handle(request(body))).status).toBe(400);
     expect(send).not.toHaveBeenCalled();
   });
-  it("sends saved plain-text content to the fixed recipient with the same stable idempotency key", async () => {
+  it("sends saved plain-text content to the administrator-configured stored recipient with the same stable idempotency key", async () => {
     expect(await (await handle()).json()).toEqual({ status: "complete", sent: 1 });
-    const claim = calls("claim_instructor_notification")[0][1]!;
-    expect(JSON.parse(claim.body as string)).toEqual({ p_owner_id: id, p_write_key: writer, p_sender: "new-sender@example.com", p_question_id: id });
+    const claim = calls("claim_instructor_notification_for_recipient")[0][1]!;
+    expect(JSON.parse(claim.body as string)).toEqual({ p_owner_id: id, p_write_key: writer, p_sender: "new-sender@example.com", p_recipient: "teacher@example.com", p_question_id: id });
     expect(claim.headers).toEqual({ apikey: "test-public-key", "Content-Type": "application/json" });
     expect(claim.signal).toBeInstanceOf(AbortSignal);
     const options = calls("/emails")[0][1]!;
     expect(options.headers).toEqual({ Authorization: "Bearer test-mail-key", "Content-Type": "application/json", "Idempotency-Key": `instructor-question/${id}` });
     const body = JSON.parse(options.body as string);
-    expect(body).toMatchObject({ from: job.sender, to: ["yamana@stargaz.design"], subject: "【Linqs】講師への質問が届きました" });
+    expect(body).toMatchObject({ from: job.sender, to: [job.recipient], subject: "【Linqs】講師への質問が届きました" });
     for (const value of [job.question.question, job.question.original_question, job.question.ai_answer, job.question.conversation_title, id]) expect(body.text).toContain(value);
     expect(body.html).toBeUndefined();
     expect(JSON.parse(calls("finish_instructor_notification")[0][1]!.body as string)).toMatchObject({ p_provider_id: "provider-receipt", p_attempt_id: job.attemptId });
@@ -84,6 +84,22 @@ describe("Supabase Edge Function instructor notifications", () => {
     config.INSTRUCTOR_NOTIFICATION_FROM = "sender@example.com\nBcc: other@example.com";
     expect((await handle()).status).toBe(503);
     expect(send).not.toHaveBeenCalled();
+  });
+  it.each(["", "invalid", "teacher@example.com,other@example.com", "Teacher <teacher@example.com>", "teacher@example.com\nBcc: outsider@example.com", "x".repeat(255) + "@example.com"])("does not claim or send jobs with invalid recipient configuration: %s", async value => {
+    config.INSTRUCTOR_NOTIFICATION_TO = value;
+    expect((await handle()).status).toBe(503);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("retains the stored recipient for retries even after administrator configuration changes", async () => {
+    config.INSTRUCTOR_NOTIFICATION_TO = "new-teacher@example.com";
+    await handle();
+    expect(JSON.parse(calls("claim_instructor_notification_for_recipient")[0][1]!.body as string).p_recipient).toBe("new-teacher@example.com");
+    expect(JSON.parse(calls("/emails")[0][1]!.body as string).to).toEqual(["teacher@example.com"]);
+  });
+  it("fails closed if the claim response lacks a valid pinned recipient", async () => {
+    send.mockResolvedValueOnce(Response.json({ ...job, recipient: "" }));
+    expect((await handle()).status).toBe(503);
+    expect(calls("/emails")).toHaveLength(0);
   });
   it("does not send sent, leased or absent jobs", async () => {
     send.mockResolvedValue(Response.json(null));
@@ -116,6 +132,6 @@ describe("Supabase Edge Function instructor notifications", () => {
   it("drains at most two jobs on a signed cron invocation", async () => {
     expect(await (await handle(request("{}"))).json()).toEqual({ status: "complete", sent: 2 });
     expect(calls("/emails")).toHaveLength(2);
-    expect(calls("claim_instructor_notification")).toHaveLength(2);
+    expect(calls("claim_instructor_notification_for_recipient")).toHaveLength(2);
   });
 });

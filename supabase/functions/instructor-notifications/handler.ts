@@ -2,6 +2,7 @@ type Env = (name: string) => string | undefined;
 type Job = {
   attemptId: string;
   sender: string;
+  recipient: string;
   question: { id: string; course_id: string | null; conversation_title: string; original_question: string; ai_answer: string; question: string; created_at: string };
 };
 
@@ -10,7 +11,7 @@ function emailBody(job: Job) {
   // Keep the original immutable payload so in-flight idempotency keys stay valid.
   return {
     from: job.sender,
-    to: ["yamana@stargaz.design"],
+    to: [job.recipient],
     subject: "【Linqs】講師への質問が届きました",
     text: [
       "Linqsで講師への質問を受け付けました。",
@@ -58,6 +59,8 @@ async function authorized(request: Request, body: string, secret: string) {
   return crypto.subtle.verify("HMAC", key, bytes, encoder.encode(`${timestamp}.${body}`));
 }
 
+const validRecipient = (value: string) => value.length <= 254 && /^[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(value);
+
 export function createNotificationHandler(env: Env, send: typeof fetch = fetch) {
   return async (request: Request): Promise<Response> => {
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
@@ -80,7 +83,8 @@ export function createNotificationHandler(env: Env, send: typeof fetch = fetch) 
       const owner = env("LINQS_CLASS_ACCOUNT_USER_ID");
       const apiKey = env("RESEND_API_KEY")?.trim();
       const sender = env("INSTRUCTOR_NOTIFICATION_FROM")?.trim();
-      if (!url || !publicKey || !owner || !apiKey || !sender || sender.length > 320 || /[\r\n]/.test(sender)) {
+      const recipient = env("INSTRUCTOR_NOTIFICATION_TO")?.trim();
+      if (!url || !publicKey || !owner || !apiKey || !recipient || !validRecipient(recipient) || !sender || sender.length > 320 || /[\r\n]/.test(sender)) {
         return Response.json({ error: "Worker configuration incomplete" }, { status: 503 });
       }
       const credentials = { p_owner_id: owner, p_write_key: writer };
@@ -94,8 +98,9 @@ export function createNotificationHandler(env: Env, send: typeof fetch = fetch) 
       }
       let sent = 0;
       for (let i = 0; i < (questionId ? 1 : 2); i++) {
-        const job = await rpc("claim_instructor_notification", { p_sender: sender, p_question_id: questionId ?? null }) as Job | null;
+        const job = await rpc("claim_instructor_notification_for_recipient", { p_sender: sender, p_recipient: recipient, p_question_id: questionId ?? null }) as Job | null;
         if (!job) break;
+        if (typeof job.recipient !== "string" || !validRecipient(job.recipient)) throw new Error("NotificationRecipientInvalid");
         let providerId: string | null = null;
         try {
           const response = await send("https://api.resend.com/emails", {

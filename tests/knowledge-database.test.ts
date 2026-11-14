@@ -12,7 +12,7 @@ async function asRole(role: "anon" | "authenticated" | "service_role", accountId
   await db.exec(`set role ${role}`);
 }
 
-async function addEntry(question: string, answer = "想夫恋の焼きそばです。", active = true) {
+async function addEntry(question: string, answer = "カレーです。", active = true) {
   return db.query<{ id: string }>(
     "insert into public.knowledge_entries(question, answer, is_active) values ($1, $2, $3) returning id",
     [question, answer, active],
@@ -38,7 +38,7 @@ describe("Supplemental knowledge migration: shared reading and administrator wri
     `);
     await db.exec(readFileSync(new URL("../supabase/migrations/005_knowledge_entries.sql", import.meta.url), "utf8"));
     await asRole("service_role");
-    await addEntry("理恵子先生の好きな食べ物は？");
+    await addEntry("サンプル先生の好きな食べ物は？");
     await addEntry("非公開の小ネタ", "下書きです。", false);
     await addEntry("開校時間は？", "午前9時です。");
   });
@@ -51,7 +51,7 @@ describe("Supplemental knowledge migration: shared reading and administrator wri
     const result = await db.query<{ question: string; answer: string }>(query);
     expect(result.rows).toHaveLength(2);
     expect(result.rows).toEqual(expect.arrayContaining([
-      { question: "理恵子先生の好きな食べ物は？", answer: "想夫恋の焼きそばです。" },
+      { question: "サンプル先生の好きな食べ物は？", answer: "カレーです。" },
       { question: "開校時間は？", answer: "午前9時です。" },
     ]));
     await asRole("authenticated", otherUserId);
@@ -103,7 +103,7 @@ describe("Supplemental knowledge migration: shared reading and administrator wri
     for (const answer of ["", " \n\t", "あ".repeat(3001)]) {
       await expect(addEntry("入力検証", answer)).rejects.toThrow("check constraint");
     }
-    await expect(addEntry("理恵子先生の好きな食べ物は？")).rejects.toThrow("unique constraint");
+    await expect(addEntry("サンプル先生の好きな食べ物は？")).rejects.toThrow("unique constraint");
     await expect(addEntry("あ".repeat(500), "あ".repeat(3000))).resolves.toBeDefined();
   });
 
@@ -112,6 +112,6 @@ describe("Supplemental knowledge migration: shared reading and administrator wri
     await db.query("delete from auth.users where id = $1", [userId]);
     expect((await db.query("select * from public.knowledge_entries order by id")).rows).toEqual(before.rows);
     await asRole("authenticated", otherUserId);
-    expect((await db.query("select answer from public.knowledge_entries where question = $1", ["理恵子先生の好きな食べ物は？"])).rows).toEqual([{ answer: "想夫恋の焼きそばです。" }]);
+    expect((await db.query("select answer from public.knowledge_entries where question = $1", ["サンプル先生の好きな食べ物は？"])).rows).toEqual([{ answer: "カレーです。" }]);
   });
 });

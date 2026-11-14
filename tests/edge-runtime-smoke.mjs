@@ -7,25 +7,25 @@ const values = {
   LINQS_EXCHANGE_WRITE_KEY: writer, LINQS_CLASS_ACCOUNT_USER_ID: id,
   LINQS_SUPABASE_PUBLISHABLE_KEY: "test-public-key", SUPABASE_URL: "https://example.supabase.co",
   INSTRUCTOR_EMAIL_NOTIFICATIONS_ENABLED: "true", RESEND_API_KEY: "test-mail-key",
-  INSTRUCTOR_NOTIFICATION_FROM: "Linqs <notifications@example.com>",
+  INSTRUCTOR_NOTIFICATION_FROM: "Linqs <notifications@example.com>", INSTRUCTOR_NOTIFICATION_TO: "teacher@example.com",
 };
 let mailCalls = 0;
 let finished = false;
 const mockedFetch = async (url, options) => {
-  if (url.endsWith("claim_instructor_notification")) return Response.json({ attemptId: id, sender: values.INSTRUCTOR_NOTIFICATION_FROM,
+  if (url.endsWith("claim_instructor_notification_for_recipient")) return Response.json({ attemptId: id, sender: values.INSTRUCTOR_NOTIFICATION_FROM, recipient: values.INSTRUCTOR_NOTIFICATION_TO,
     question: { id, question: "講師への質問テスト", original_question: "元の質問", ai_answer: "AIの回答", conversation_title: "テスト", course_id: null, created_at: "2026-11-13T00:00:00Z" } });
   if (url === "https://api.resend.com/emails") {
     const body = JSON.parse(options.body);
-    if (body.to[0] !== "yamana@stargaz.design" || !body.text.includes("講師への質問テスト")) throw new Error("Unexpected email payload");
+    if (body.to[0] !== values.INSTRUCTOR_NOTIFICATION_TO || !body.text.includes("講師への質問テスト")) throw new Error("Unexpected email payload");
     mailCalls++;
     return Response.json({ id: "mock-provider-receipt" });
   }
   if (url.endsWith("finish_instructor_notification")) { finished = true; return Response.json(true); }
   throw new Error("Unexpected network destination");
 };
-const server = Deno.serve({ hostname: "127.0.0.1", port: 3000 }, createNotificationHandler(name => values[name], mockedFetch));
+const server = Deno.serve({ hostname: "127.0.0.1", port: 0 }, createNotificationHandler(name => values[name], mockedFetch));
 try {
-  const url = "http://127.0.0.1:3000";
+  const url = `http://127.0.0.1:${server.addr.port}`;
   const rejected = await fetch(url, { method: "POST", body: "{}" });
   if (rejected.status !== 401 || mailCalls) throw new Error("Unsigned request was accepted");
   const body = JSON.stringify({ questionId: id });
@@ -36,5 +36,5 @@ try {
   const response = await fetch(url, { method: "POST", body, headers: { "x-linqs-timestamp": timestamp, "x-linqs-signature": signature } });
   const result = await response.json();
   if (response.status !== 200 || result.sent !== 1 || mailCalls !== 1 || !finished) throw new Error("Notification did not complete");
-  console.log("Deno HTTP smoke passed at localhost:3000: unsigned requests blocked; signed notification completed with mocked database and email.");
+  console.log("Deno HTTP smoke passed on a temporary local port: unsigned requests blocked; signed notification completed with mocked database and email.");
 } finally { await server.shutdown(); }
