@@ -351,7 +351,7 @@ export default function LearningApp() {
   return <div className="app-shell">
     {mobileOpen && <button className="mobile-overlay" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="メインメニュー">
-      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="Linqs ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
+      <div className="sidebar-brand"><button type="button" className="logo-home" aria-label="LINQS ホームに戻る" onClick={newChat} disabled={busy}><Logo /></button><button className="icon-button mobile-close" aria-label="メニューを閉じる" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
       <div className="sidebar-actions">
         <button type="button" className="new-chat" onClick={newChat} disabled={busy}><Plus size={16} strokeWidth={2} aria-hidden="true" /><span>新しい質問</span></button>
         <button type="button" className="icon-button sidebar-search" aria-label="質問を検索" title="質問を検索" disabled={busy} onClick={() => { nav("history"); requestAnimationFrame(() => historySearchRef.current?.focus()); }}><Search size={19} aria-hidden="true" /></button>
@@ -396,13 +396,13 @@ export default function LearningApp() {
             <button type="button" className="question-tip" onClick={() => setModal("guide")}>質問のコツ<ChevronRight size={15} /></button>
           </div> : <div className="messages" aria-live="polite" aria-busy={busy}>
             {messages.map((message, index) => <div className={`message message-${message.role}${index === messages.length - 1 && message.role === "assistant" ? " latest-answer" : ""}`} key={message.id} ref={index === messages.length - 1 && message.role === "assistant" ? latestAnswerRef : undefined}>
-              {message.role === "assistant" && <div className="assistant-head"><Logo small /><strong>Linqs</strong><span>学習パートナー</span></div>}
+              {message.role === "assistant" && <div className="assistant-head"><Logo small /><strong>LINQS</strong><span>学習パートナー</span></div>}
               <div className="message-content">{message.role === "assistant" ? <Markdown content={message.content} /> : <p>{message.content}</p>}</div>
               {message.role === "assistant" && <div className="message-actions"><button onClick={() => copyMessage(message)}>{copied === message.id ? <Check size={14} /> : <Copy size={14} />}{copied === message.id ? "コピーしました" : "コピー"}</button><span>{new Date(message.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span></div>}
               {message.role === "assistant" && active && <AskInstructor conversationId={active.id} messageIndex={index} originalQuestion={messages.slice(0, index).findLast(m => m.role === "user")?.content ?? ""} answer={message.content} disabled={busy || active.persisted === false} onViewQuestions={() => nav("instructor")} />}
             </div>)}
             {pendingQuestion && <div className="message message-user" ref={pendingQuestionRef}><div className="message-content"><p>{pendingQuestion}</p></div></div>}
-            {busy && <div className="message message-assistant latest-answer"><div className="assistant-head"><Logo small /><strong>Linqs</strong></div><div className="thinking"><span /><span /><span /><p>質問の内容を確認しています</p></div></div>}
+            {busy && <div className="message message-assistant latest-answer"><div className="assistant-head"><Logo small /><strong>LINQS</strong></div><div className="thinking"><span /><span /><span /><p>質問の内容を確認しています</p></div></div>}
             {!busy && messages.length > 0 && <div className="followup-prompt"><Sparkles size={15} />疑問が残ったら、そのまま続けて質問できます。</div>}
           </div>}
         </div>
