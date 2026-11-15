@@ -5,7 +5,7 @@ export default function Logo({ small = false }: { small?: boolean }) {
     <Image
       src={small ? "/brand/linqs-symbol.svg" : "/brand/linqs-logo.svg"}
       alt={small ? "" : "LINQS"}
-      width={small ? 512 : 2158}
+      width={small ? 512 : 2007}
       height={512}
       unoptimized
       loading="eager"
